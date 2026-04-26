@@ -9,6 +9,8 @@ import { connectWeb3Auth, getProviderAccounts, getProviderPrivateKey } from "@/l
 
 import AuthGuard from "@/components/AuthGuard";
 import { useAuth } from "@/components/AuthContext";
+import { getTierByPlanId } from "@/lib/services";
+import Image from "next/image";
 
 const defaultSubscriptionManagerAddress = process.env.NEXT_PUBLIC_SUBSCRIPTION_MANAGER_ADDRESS || "";
 const defaultArkaApiKey = process.env.NEXT_PUBLIC_ARKA_API_KEY || "";
@@ -225,28 +227,44 @@ export default function LifecyclePage() {
             <thead className="bg-slate-50 text-slate-700">
               <tr>
                 <th className="px-4 py-3">Select</th>
-                <th className="px-4 py-3">Subscription</th>
+                <th className="px-4 py-3">Service</th>
                 <th className="px-4 py-3">Plan</th>
                 <th className="px-4 py-3">State</th>
                 <th className="px-4 py-3">Due</th>
                 <th className="px-4 py-3">Next Renewal</th>
-                <th className="px-4 py-3">Token</th>
               </tr>
             </thead>
             <tbody>
               {userRows.map((row) => {
                 const checked = selectedIds.includes(row.subscriptionId);
+                const serviceInfo = getTierByPlanId(row.planId);
                 return (
                   <tr key={row.subscriptionId} className="border-t border-slate-100 text-slate-700">
                     <td className="px-4 py-3">
                       <input type="checkbox" checked={checked} onChange={() => toggleId(row.subscriptionId)} />
                     </td>
-                    <td className="px-4 py-3">{row.subscriptionId}</td>
-                    <td className="px-4 py-3">{row.planId}</td>
+                    <td className="px-4 py-3">
+                      {serviceInfo ? (
+                        <div className="flex items-center gap-2">
+                          <div className="relative h-8 w-8 flex-shrink-0 overflow-hidden rounded-md">
+                            <Image
+                              src={serviceInfo.service.logo}
+                              alt={serviceInfo.service.name}
+                              fill
+                              className="object-contain"
+                              sizes="32px"
+                            />
+                          </div>
+                          <span className="text-sm font-medium">{serviceInfo.service.name}</span>
+                        </div>
+                      ) : (
+                        <span className="text-xs text-slate-500">Plan {row.planId}</span>
+                      )}
+                    </td>
+                    <td className="px-4 py-3">{serviceInfo ? serviceInfo.tier.name : `Plan ${row.planId}`}</td>
                     <td className="px-4 py-3">{row.active ? (row.paused ? "Paused" : "Active") : "Inactive"}</td>
                     <td className="px-4 py-3">{row.due ? "Yes" : "No"}</td>
-                    <td className="px-4 py-3">{new Date(row.nextRenewalAtIso).toLocaleString()}</td>
-                    <td className="px-4 py-3 font-mono text-xs">{row.planTokenAddress}</td>
+                    <td className="px-4 py-3">{new Date(row.nextRenewalAtIso).toLocaleDateString()}</td>
                   </tr>
                 );
               })}

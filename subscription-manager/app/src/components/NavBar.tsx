@@ -22,16 +22,13 @@ export default function NavBar() {
   const { isAuthenticated, login, logout, eoaAddress } = useAuth();
 
   const publicLinks = [
-    { href: "/", label: "Home" },
     { href: "/plans", label: "Plans" },
   ];
 
   const protectedLinks = [
     { href: "/dashboard", label: "Dashboard" },
-    { href: "/subscribe", label: "Subscribe" },
     { href: "/history", label: "History" },
     { href: "/lifecycle", label: "Lifecycle" },
-    { href: "/evidence", label: "Evidence" },
   ];
 
   const activeClass = "bg-slate-900 text-white";

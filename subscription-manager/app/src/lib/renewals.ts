@@ -1,4 +1,12 @@
+import { sendSubscriptionAction } from "@/lib/subscription";
 import { fetchOnchainSubscriptionSnapshot } from "@/lib/onchain-subscriptions";
+
+const SM_ADDRESS = process.env.NEXT_PUBLIC_SUBSCRIPTION_MANAGER_ADDRESS || "";
+const ARKA_KEY = process.env.NEXT_PUBLIC_ARKA_API_KEY || "";
+const BUNDLER_URL = process.env.NEXT_PUBLIC_BUNDLER_URL || "";
+
+// Keeper wallet for auto-renewals (should be funded with gas tokens)
+const KEEPER_PRIVATE_KEY = process.env.KEEPER_PRIVATE_KEY || "";
 
 export interface RenewalCandidate {
   subscriptionId: number;
@@ -65,6 +73,62 @@ export async function runRenewalDryRun(initialCandidates?: RenewalCandidate[]): 
     source,
     results,
     executedAt: new Date().toISOString(),
-    note: "This endpoint currently performs scheduler dry-run logging only.",
+    note: "Dry-run completed. Use executeRenewals() to process.",
   };
+}
+
+export interface RenewalExecutionResult {
+  subscriptionId: number;
+  status: "success" | "failed" | "skipped";
+  txHash?: string;
+  error?: string;
+}
+
+export async function executeRenewals(candidates: RenewalCandidate[]): Promise<RenewalExecutionResult[]> {
+  if (!KEEPER_PRIVATE_KEY) {
+    console.warn("[Renewals] No KEEPER_PRIVATE_KEY configured, skipping execution");
+    return candidates.map((c) => ({
+      subscriptionId: c.subscriptionId,
+      status: "skipped" as const,
+      error: "Keeper not configured",
+    }));
+  }
+
+  if (!SM_ADDRESS || !ARKA_KEY) {
+    return candidates.map((c) => ({
+      subscriptionId: c.subscriptionId,
+      status: "skipped" as const,
+      error: "Contract or paymaster not configured",
+    }));
+  }
+
+  const results: RenewalExecutionResult[] = [];
+
+  for (const candidate of candidates) {
+    try {
+      const result = await sendSubscriptionAction({
+        privateKey: KEEPER_PRIVATE_KEY,
+        action: "renew",
+        mode: "sponsor",
+        subscriptionManagerAddress: SM_ADDRESS,
+        subscriptionId: candidate.subscriptionId,
+        bundlerUrl: BUNDLER_URL || undefined,
+        arkaApiKey: ARKA_KEY,
+      });
+
+      results.push({
+        subscriptionId: candidate.subscriptionId,
+        status: result.txHash ? "success" : "failed",
+        txHash: result.txHash || undefined,
+      });
+    } catch (error) {
+      results.push({
+        subscriptionId: candidate.subscriptionId,
+        status: "failed",
+        error: error instanceof Error ? error.message : "Unknown error",
+      });
+    }
+  }
+
+  return results;
 }

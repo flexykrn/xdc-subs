@@ -1,8 +1,25 @@
 import { Interface } from "ethers";
 
+import { createPublicClient, http } from "viem";
+import { APOTHEM_CHAIN } from "@/config/chains";
 import { subscribeDirect, renewDirect, pauseDirect, cancelDirect } from "@/lib/direct-tx";
 import { createModularSdk, type SmartAccountSnapshot } from "@/lib/etherspot";
 import { buildPaymasterContext, getPaymasterUrl, type GasMode } from "@/lib/etherspot";
+import { getBestTokenForPayment } from "@/lib/subscription-utils";
+
+const rpcUrl = process.env.NEXT_PUBLIC_APOTHEM_RPC_URL || "https://erpc.apothem.network";
+
+const publicClient = createPublicClient({
+  transport: http(rpcUrl),
+});
+
+const erc20BalanceAbi = [{
+  name: "balanceOf",
+  type: "function",
+  inputs: [{ name: "account", type: "address" }],
+  outputs: [{ type: "uint256" }],
+  stateMutability: "view",
+}] as const;
 
 export type SubscriptionAction = "createPlan" | "setTreasury" | "subscribe" | "renew" | "pause" | "cancel";
 
@@ -119,6 +136,30 @@ export async function sendSubscriptionAction(
     throw new Error("Private key is required. Please connect your wallet first.");
   }
 
+  // Multi-token: pick best token automatically
+  let resolvedTokenAddress = params.tokenAddress;
+  let resolvedTokenAmount = params.tokenAmount;
+  
+  if (params.mode === "multi-token" && params.action === "subscribe") {
+    try {
+      const eoaAccount = privateKeyToAccount(privateKey as `0x${string}`);
+      const best = await getBestTokenForPayment(eoaAccount.address, params.tokenAmount || "0");
+      if (best) {
+        resolvedTokenAddress = best.tokenAddress;
+        // Find the plan price for this token's service
+        const service = SERVICES.find(s => s.tokenAddress === best.tokenAddress);
+        if (service) {
+          const tier = service.tiers.find(t => t.planId === params.planId);
+          if (tier) {
+            resolvedTokenAmount = tier.price;
+          }
+        }
+      }
+    } catch {
+      // Fall through to default token
+    }
+  }
+
   // Try Etherspot AA first
   try {
     const sdk = createModularSdk(privateKey, params.bundlerUrl);
@@ -127,12 +168,12 @@ export async function sendSubscriptionAction(
 
     await sdk.clearUserOpsFromBatch();
 
-    if ((params.action === "subscribe" || params.action === "renew") && params.tokenAddress) {
-      const approvalAmount = params.approvalAmount ?? params.tokenAmount ?? "0";
+    if ((params.action === "subscribe" || params.action === "renew") && resolvedTokenAddress) {
+      const approvalAmount = params.approvalAmount ?? resolvedTokenAmount ?? "0";
       const erc20Interface = new Interface(ERC20_APPROVE_ABI);
 
       await sdk.addUserOpsToBatch({
-        to: params.tokenAddress,
+        to: resolvedTokenAddress,
         data: erc20Interface.encodeFunctionData("approve", [params.subscriptionManagerAddress, approvalAmount]),
       });
     }
@@ -146,7 +187,7 @@ export async function sendSubscriptionAction(
 
     const paymasterDetails = {
       url: getPaymasterUrl(getRequiredEnvValue(params.arkaApiKey, "NEXT_PUBLIC_ARKA_API_KEY")),
-      context: buildPaymasterContext(params.mode, params.tokenAddress),
+      context: buildPaymasterContext(params.mode, resolvedTokenAddress),
     };
 
     const estimatedUserOp = await sdk.estimate({
@@ -154,14 +195,25 @@ export async function sendSubscriptionAction(
     });
 
     const userOpHash = await sdk.send(estimatedUserOp);
-    const txHash = await sdk.getUserOpReceipt(userOpHash);
+    
+    // Poll for receipt (up to 60 seconds)
+    let txHash = "";
+    for (let i = 0; i < 20; i++) {
+      await new Promise((resolve) => setTimeout(resolve, 3000));
+      try {
+        txHash = await sdk.getUserOpReceipt(userOpHash);
+        if (txHash) break;
+      } catch {
+        // Receipt not ready yet, continue polling
+      }
+    }
 
     await sdk.clearUserOpsFromBatch();
 
     return {
       action: params.action,
       mode: params.mode,
-      token: params.tokenAddress,
+      token: resolvedTokenAddress,
       subscriptionId: params.subscriptionId?.toString(),
       uoHash: userOpHash,
       txHash,
@@ -170,6 +222,7 @@ export async function sendSubscriptionAction(
       result: txHash ? "success" : "failed",
       smartAccountAddress,
       nativeBalance,
+      eoaAddress: "",
     };
   } catch (etherspotError) {
     console.warn("[Subscription] Etherspot failed, falling back to direct EOA:", etherspotError);
@@ -182,8 +235,8 @@ export async function sendSubscriptionAction(
           privateKey,
           params.subscriptionManagerAddress,
           params.planId ?? 0,
-          params.tokenAddress,
-          params.tokenAmount
+          resolvedTokenAddress,
+          resolvedTokenAmount
         );
         break;
       case "renew":
@@ -214,15 +267,16 @@ export async function sendSubscriptionAction(
     return {
       action: params.action,
       mode: params.mode,
-      token: params.tokenAddress,
+      token: resolvedTokenAddress,
       subscriptionId: params.subscriptionId?.toString(),
       uoHash: "fallback-eoa",
       txHash: result.txHash,
       startedAt: new Date().toISOString(),
       confirmedAt: new Date().toISOString(),
       result: "success",
-      smartAccountAddress: "Smart account (compute pending - EOA fallback active)",
+      smartAccountAddress: result.explorerUrl.includes("tx/") ? "EOA fallback (see tx)" : "EOA fallback active",
       nativeBalance: "0",
+      eoaAddress: "",
     };
   }
 }

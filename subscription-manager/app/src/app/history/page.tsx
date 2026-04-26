@@ -15,6 +15,8 @@ import AuthGuard from "@/components/AuthGuard";
 import StatCard from "@/components/StatCard";
 import TransactionVolumeChart from "@/components/TransactionVolumeChart";
 import { useAuth } from "@/components/AuthContext";
+import { getTierByPlanId } from "@/lib/services";
+import Image from "next/image";
 
 const explorerUrl = process.env.NEXT_PUBLIC_EXPLORER_URL || "https://explorer.apothem.network/";
 
@@ -317,7 +319,7 @@ export default function HistoryPage() {
                   </td>
                   <td className="px-4 py-3">
                     <div className="text-xs space-y-1">
-                      <p><span className="text-slate-500">Subscription:</span> {row.subscriptionId || "-"}</p>
+                      <ServiceDetail subscriptionId={row.subscriptionId} />
                       <p><span className="text-slate-500">Batched:</span> 2 calls (approve + subscribe)</p>
                       <p><span className="text-slate-500">Gas:</span> {row.mode === "sponsor" ? "$0 (sponsored)" : "Paid in tokens"}</p>
                     </div>
@@ -358,5 +360,31 @@ export default function HistoryPage() {
       </div>
     </section>
     </AuthGuard>
+  );
+}
+
+function ServiceDetail({ subscriptionId }: { subscriptionId?: string }) {
+  if (!subscriptionId) return <p><span className="text-slate-500">Subscription:</span> -</p>;
+  
+  const serviceInfo = getTierByPlanId(Number(subscriptionId));
+  if (!serviceInfo) {
+    return <p><span className="text-slate-500">Subscription:</span> {subscriptionId}</p>;
+  }
+  
+  return (
+    <div className="flex items-center gap-2">
+      <div className="relative h-5 w-5 flex-shrink-0 overflow-hidden rounded-sm">
+        <Image
+          src={serviceInfo.service.logo}
+          alt={serviceInfo.service.name}
+          fill
+          className="object-contain"
+          sizes="20px"
+        />
+      </div>
+      <span className="font-medium">{serviceInfo.service.name}</span>
+      <span className="text-slate-400">•</span>
+      <span>{serviceInfo.tier.name}</span>
+    </div>
   );
 }

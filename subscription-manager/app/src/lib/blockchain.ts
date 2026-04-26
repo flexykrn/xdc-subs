@@ -97,8 +97,8 @@ const subscriptionManagerAbi = [
     type: "function",
     inputs: [{ name: "", type: "uint256" }],
     outputs: [
-      { name: "planId", type: "uint256" },
       { name: "subscriber", type: "address" },
+      { name: "planId", type: "uint256" },
       { name: "nextRenewalAt", type: "uint256" },
       { name: "active", type: "bool" },
       { name: "paused", type: "bool" },
@@ -169,8 +169,8 @@ export async function getSubscription(contractAddress: string, subscriptionId: n
     });
     return {
       subscriptionId,
-      planId: Number(result[0]),
-      subscriber: result[1],
+      subscriber: result[0],
+      planId: Number(result[1]),
       nextRenewalAt: Number(result[2]),
       active: result[3],
       paused: result[4],
