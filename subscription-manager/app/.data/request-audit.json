@@ -1,0 +1,50 @@
+[
+  {
+    "id": "1777218324229-f6c7aa008f876",
+    "timestamp": "2026-04-26T15:45:24.229Z",
+    "route": "/api/renewals/run",
+    "method": "POST",
+    "authorized": false,
+    "principal": "anonymous",
+    "authMethod": "none",
+    "statusCode": 401,
+    "note": "Unauthorized renewal run attempt",
+    "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/147.0.0.0 Safari/537.36"
+  },
+  {
+    "id": "1777201147891-b1e8689774109",
+    "timestamp": "2026-04-26T10:59:07.891Z",
+    "route": "/api/renewals/run",
+    "method": "POST",
+    "authorized": false,
+    "principal": "anonymous",
+    "authMethod": "none",
+    "statusCode": 401,
+    "note": "Unauthorized renewal run attempt",
+    "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/147.0.0.0 Safari/537.36"
+  },
+  {
+    "id": "1776766927525-1330c181b3ba5",
+    "timestamp": "2026-04-21T10:22:07.525Z",
+    "route": "/api/renewals/run",
+    "method": "POST",
+    "authorized": true,
+    "principal": "demo",
+    "authMethod": "admin-key",
+    "statusCode": 200,
+    "note": "Renewal dry-run source=onchain queued=0",
+    "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/147.0.0.0 Safari/537.36"
+  },
+  {
+    "id": "1776766927490-b55f666eb20cb",
+    "timestamp": "2026-04-21T10:22:07.490Z",
+    "route": "/api/renewals/trigger",
+    "method": "POST",
+    "authorized": true,
+    "principal": "demo",
+    "authMethod": "cron-secret",
+    "statusCode": 200,
+    "note": "Trigger dry-run source=onchain queued=0",
+    "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/147.0.0.0 Safari/537.36"
+  }
+]

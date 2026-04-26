@@ -23,20 +23,6 @@ const publicClient = createPublicClient({
   transport: http(rpcUrl),
 });
 
-const viemChain = {
-  id: APOTHEM_CHAIN.chainIdDecimal,
-  name: APOTHEM_CHAIN.chainName,
-  nativeCurrency: APOTHEM_CHAIN.nativeCurrency,
-  rpcUrls: {
-    default: { http: [APOTHEM_CHAIN.rpcUrl] },
-    public: { http: [APOTHEM_CHAIN.rpcUrl] },
-  },
-  blockExplorers: {
-    default: { name: "Apothem Explorer", url: APOTHEM_CHAIN.explorerUrl },
-  },
-  testnet: true,
-} as const;
-
 const subscriptionManagerAbi = [
   {
     name: "subscribe",

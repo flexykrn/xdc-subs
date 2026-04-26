@@ -3,8 +3,6 @@
 import { useEffect, useState } from "react";
 
 import AuthGuard from "@/components/AuthGuard";
-import { isDemoMode } from "@/lib/demo";
-import { getMockTransactions } from "@/lib/mock-data";
 
 interface EvidenceResponse {
   generatedAt: string;
@@ -38,55 +36,6 @@ interface EvidenceResponse {
   };
 }
 
-const defaultMockEvidence: EvidenceResponse = {
-  generatedAt: new Date().toISOString(),
-  telemetry: {
-    total: 5,
-    successCount: 5,
-    failedCount: 0,
-    pendingCount: 0,
-  },
-  onchain: {
-    snapshot: {
-      totalScanned: 3,
-      dueCount: 0,
-      activeCount: 2,
-      pausedCount: 0,
-      generatedAt: new Date().toISOString(),
-    },
-  },
-  audit: {
-    total: 3,
-    latest: [
-      {
-        route: "/api/subscriptions/status",
-        method: "GET",
-        timestamp: new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString(),
-        statusCode: 200,
-        principal: "system",
-        authMethod: "none",
-        note: "Scheduled scan",
-      },
-      {
-        route: "/api/renewals/run",
-        method: "POST",
-        timestamp: new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString(),
-        statusCode: 200,
-        principal: "admin",
-        authMethod: "api-key",
-        note: "Dry-run renewal batch",
-      },
-      {
-        route: "/api/evidence/summary",
-        method: "GET",
-        timestamp: new Date().toISOString(),
-        statusCode: 200,
-        principal: "user",
-        authMethod: "session",
-      },
-    ],
-  },
-};
 
 export default function EvidencePage() {
   const [data, setData] = useState<EvidenceResponse | null>(null);
@@ -94,10 +43,7 @@ export default function EvidencePage() {
   const [error, setError] = useState("");
 
   useEffect(() => {
-    // Pre-load mock evidence in demo mode
-    if (isDemoMode()) {
-      setData(defaultMockEvidence);
-    }
+    refresh();
   }, []);
 
   function exportJson() {

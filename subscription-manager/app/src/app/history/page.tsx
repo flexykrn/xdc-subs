@@ -2,8 +2,6 @@
 
 import { useEffect, useMemo, useState } from "react";
 
-import { isDemoMode } from "@/lib/demo";
-import { getMockTransactions } from "@/lib/mock-data";
 import { SubscriptionAction } from "@/lib/subscription";
 import {
   mergeTelemetryRows,
@@ -13,11 +11,13 @@ import {
   type TelemetryRow,
 } from "@/lib/telemetry";
 
+import AuthGuard from "@/components/AuthGuard";
+import { useAuth } from "@/components/AuthContext";
+
 const explorerUrl = process.env.NEXT_PUBLIC_EXPLORER_URL || "https://explorer.apothem.network/";
 
-import AuthGuard from "@/components/AuthGuard";
-
 export default function HistoryPage() {
+  const { eoaAddress } = useAuth();
   const [rows, setRows] = useState<TelemetryRow[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [modeFilter, setModeFilter] = useState<"all" | "sponsor" | "erc20" | "multi-token">("all");
@@ -26,30 +26,18 @@ export default function HistoryPage() {
   const [renewalStatus, setRenewalStatus] = useState("");
   const [renewalResult, setRenewalResult] = useState<string>("");
 
+  // Load real telemetry on mount
   useEffect(() => {
-    // Pre-load mock data on mount
-    const demoMode = isDemoMode();
-    if (demoMode) {
-      const mockTxs = getMockTransactions();
-      // Convert mock transactions to telemetry rows format
-      const mockRows: TelemetryRow[] = mockTxs.map((tx) => ({
-        action: tx.action as SubscriptionAction,
-        mode: tx.mode,
-        wallet: tx.wallet,
-        token: tx.token,
-        subscriptionId: tx.subscriptionId.toString(),
-        uoHash: tx.uoHash,
-        txHash: tx.txHash,
-        startedAt: tx.startedAt,
-        confirmedAt: tx.confirmedAt,
-        result: tx.result,
-      }));
-      setRows(mockRows);
-    }
+    handleRefresh();
   }, []);
 
   const filteredRows = useMemo(() => {
     return rows.filter((row) => {
+      // Only show current user's transactions
+      if (eoaAddress && row.wallet && row.wallet.toLowerCase() !== eoaAddress.toLowerCase()) {
+        return false;
+      }
+
       if (modeFilter !== "all" && row.mode !== modeFilter) {
         return false;
       }
@@ -64,7 +52,7 @@ export default function HistoryPage() {
 
       return true;
     });
-  }, [modeFilter, resultFilter, rows, subscriptionFilter]);
+  }, [modeFilter, resultFilter, rows, subscriptionFilter, eoaAddress]);
 
   const hasRows = filteredRows.length > 0;
   const csv = useMemo(() => telemetryRowsToCsv(filteredRows), [filteredRows]);
@@ -75,27 +63,7 @@ export default function HistoryPage() {
       const localRows = readTelemetryRows();
       const serverRows = await readServerTelemetryRows();
       const merged = mergeTelemetryRows(serverRows, localRows);
-      
-      // Merge with mock data if in demo mode
-      const demoMode = isDemoMode();
-      if (demoMode) {
-        const mockTxs = getMockTransactions();
-        const mockRows: TelemetryRow[] = mockTxs.map((tx) => ({
-          action: tx.action as SubscriptionAction,
-          mode: tx.mode,
-          wallet: tx.wallet,
-          token: tx.token,
-          subscriptionId: tx.subscriptionId.toString(),
-          uoHash: tx.uoHash,
-          txHash: tx.txHash,
-          startedAt: tx.startedAt,
-          confirmedAt: tx.confirmedAt,
-          result: tx.result,
-        }));
-        setRows(mergeTelemetryRows(merged, mockRows));
-      } else {
-        setRows(merged);
-      }
+      setRows(merged);
     } finally {
       setIsLoading(false);
     }

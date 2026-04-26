@@ -2,12 +2,13 @@
 
 import { useEffect, useMemo, useState } from "react";
 
-import { isDemoMode } from "@/lib/demo";
-import { getMockSubscriptions } from "@/lib/mock-data";
 import type { OnchainSubscriptionRow } from "@/lib/onchain-subscriptions";
 import { sendSubscriptionAction } from "@/lib/subscription";
 import { appendTelemetryRow, appendTelemetryRowRemote } from "@/lib/telemetry";
 import { connectWeb3Auth, getProviderAccounts, getProviderPrivateKey } from "@/lib/web3auth";
+
+import AuthGuard from "@/components/AuthGuard";
+import { useAuth } from "@/components/AuthContext";
 
 const defaultSubscriptionManagerAddress = process.env.NEXT_PUBLIC_SUBSCRIPTION_MANAGER_ADDRESS || "";
 const defaultArkaApiKey = process.env.NEXT_PUBLIC_ARKA_API_KEY || "";
@@ -20,9 +21,8 @@ interface StatusResponse {
   generatedAt: string;
 }
 
-import AuthGuard from "@/components/AuthGuard";
-
 export default function LifecyclePage() {
+  const { eoaAddress } = useAuth();
   const [rows, setRows] = useState<OnchainSubscriptionRow[]>([]);
   const [selectedIds, setSelectedIds] = useState<number[]>([]);
   const [mode, setMode] = useState<"sponsor" | "erc20" | "multi-token">("sponsor");
@@ -32,32 +32,21 @@ export default function LifecyclePage() {
   const [error, setError] = useState("");
   const [lastGeneratedAt, setLastGeneratedAt] = useState("");
 
+  // Load real subscriptions on mount
   useEffect(() => {
-    // Pre-load mock subscriptions
-    const demoMode = isDemoMode();
-    if (demoMode) {
-      const mockSubs = getMockSubscriptions();
-      const nowSeconds = Math.floor(Date.now() / 1000);
-      const mockRows: OnchainSubscriptionRow[] = mockSubs.map((sub) => ({
-        subscriptionId: sub.id,
-        subscriber: "0xAbCdEf1234567890aBcDeF1234567890AbCdEf12",
-        planId: sub.planId,
-        nextRenewalAtEpoch: Math.floor(new Date(sub.nextRenewal).getTime() / 1000),
-        nextRenewalAtIso: sub.nextRenewal,
-        active: sub.status === "active",
-        paused: sub.status === "paused",
-        due: false,
-        planPriceWei: sub.tokenAmount,
-        planIntervalSeconds: 2592000,
-        planTokenAddress: sub.tokenAddress,
-      }));
-      setRows(mockRows);
-    }
+    refreshRows();
   }, []);
 
+  const userRows = useMemo(() => {
+    if (!eoaAddress) return [];
+    return rows.filter((row) => 
+      row.subscriber.toLowerCase() === eoaAddress.toLowerCase()
+    );
+  }, [rows, eoaAddress]);
+
   const selectedRows = useMemo(
-    () => rows.filter((item) => selectedIds.includes(item.subscriptionId)),
-    [rows, selectedIds],
+    () => userRows.filter((item) => selectedIds.includes(item.subscriptionId)),
+    [userRows, selectedIds],
   );
 
   async function refreshRows() {
@@ -86,7 +75,6 @@ export default function LifecyclePage() {
       if (previous.includes(subscriptionId)) {
         return previous.filter((id) => id !== subscriptionId);
       }
-
       return [...previous, subscriptionId];
     });
   }
@@ -95,30 +83,24 @@ export default function LifecyclePage() {
     setIsRunning(true);
     setStatus("Connecting Web3Auth...");
     setError("");
-    const demoMode = isDemoMode();
 
     try {
       if (selectedRows.length === 0) {
         throw new Error("Select at least one subscription row");
       }
 
-      if (!demoMode && !defaultSubscriptionManagerAddress) {
+      if (!defaultSubscriptionManagerAddress) {
         throw new Error("Missing NEXT_PUBLIC_SUBSCRIPTION_MANAGER_ADDRESS");
       }
 
-      if (!demoMode && !defaultArkaApiKey) {
+      if (!defaultArkaApiKey) {
         throw new Error("Missing NEXT_PUBLIC_ARKA_API_KEY");
       }
 
-      let wallet = "0xdemo000000000000000000000000000000000004";
-      let privateKey = "";
-
-      if (!demoMode) {
-        const provider = await connectWeb3Auth();
-        const accounts = await getProviderAccounts(provider);
-        wallet = accounts[0] || "";
-        privateKey = await getProviderPrivateKey(provider);
-      }
+      const provider = await connectWeb3Auth();
+      const accounts = await getProviderAccounts(provider);
+      const wallet = accounts[0] || "";
+      const privateKey = await getProviderPrivateKey(provider);
 
       let successCount = 0;
       let failedCount = 0;
@@ -175,7 +157,7 @@ export default function LifecyclePage() {
     <section className="w-full py-4">
       <h1 className="text-2xl font-bold text-slate-900">Lifecycle Console</h1>
       <p className="mt-2 text-sm text-slate-600">
-        Select onchain subscriptions and execute renew, pause, or cancel as AA actions.
+        Your onchain subscriptions. Select and execute renew, pause, or cancel actions.
       </p>
 
       <div className="mt-4 flex flex-wrap items-center gap-2">
@@ -228,32 +210,31 @@ export default function LifecyclePage() {
       {error ? <p className="mt-2 text-sm text-red-600">{error}</p> : null}
       {lastGeneratedAt ? <p className="mt-1 text-xs text-slate-500">Snapshot: {new Date(lastGeneratedAt).toLocaleString()}</p> : null}
 
-      <div className="mt-6 overflow-x-auto rounded-2xl border border-slate-200 bg-white">
-        <table className="w-full min-w-[800px] text-left text-sm">
-          <thead className="bg-slate-50 text-slate-700">
-            <tr>
-              <th className="px-4 py-3">Select</th>
-              <th className="px-4 py-3">Subscription</th>
-              <th className="px-4 py-3">Plan</th>
-              <th className="px-4 py-3">State</th>
-              <th className="px-4 py-3">Due</th>
-              <th className="px-4 py-3">Next Renewal</th>
-              <th className="px-4 py-3">Token</th>
-            </tr>
-          </thead>
-          <tbody>
-            {rows.length === 0 ? (
-              <tr className="border-t border-slate-100 text-slate-500">
-                <td className="px-4 py-3">-</td>
-                <td className="px-4 py-3">No subscriptions loaded</td>
-                <td className="px-4 py-3">-</td>
-                <td className="px-4 py-3">-</td>
-                <td className="px-4 py-3">-</td>
-                <td className="px-4 py-3">-</td>
-                <td className="px-4 py-3">-</td>
+      {!eoaAddress ? (
+        <div className="mt-6 rounded-2xl border border-slate-200 bg-white p-8 text-center">
+          <p className="text-sm text-slate-600">Connect your wallet to view your subscriptions.</p>
+        </div>
+      ) : userRows.length === 0 ? (
+        <div className="mt-6 rounded-2xl border border-slate-200 bg-white p-8 text-center">
+          <p className="text-sm text-slate-600">No subscriptions found for {eoaAddress.slice(0, 6)}...{eoaAddress.slice(-4)}</p>
+          <p className="mt-2 text-xs text-slate-500">Subscribe to a plan to see it here.</p>
+        </div>
+      ) : (
+        <div className="mt-6 overflow-x-auto rounded-2xl border border-slate-200 bg-white">
+          <table className="w-full min-w-[800px] text-left text-sm">
+            <thead className="bg-slate-50 text-slate-700">
+              <tr>
+                <th className="px-4 py-3">Select</th>
+                <th className="px-4 py-3">Subscription</th>
+                <th className="px-4 py-3">Plan</th>
+                <th className="px-4 py-3">State</th>
+                <th className="px-4 py-3">Due</th>
+                <th className="px-4 py-3">Next Renewal</th>
+                <th className="px-4 py-3">Token</th>
               </tr>
-            ) : (
-              rows.map((row) => {
+            </thead>
+            <tbody>
+              {userRows.map((row) => {
                 const checked = selectedIds.includes(row.subscriptionId);
                 return (
                   <tr key={row.subscriptionId} className="border-t border-slate-100 text-slate-700">
@@ -268,11 +249,11 @@ export default function LifecyclePage() {
                     <td className="px-4 py-3 font-mono text-xs">{row.planTokenAddress}</td>
                   </tr>
                 );
-              })
-            )}
-          </tbody>
-        </table>
-      </div>
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
     </section>
     </AuthGuard>
   );

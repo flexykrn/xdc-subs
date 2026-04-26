@@ -32,11 +32,13 @@ export default function DashboardPage() {
     generatedAt: string;
   } | null>(null);
   const [statusLoading, setStatusLoading] = useState(false);
+  const [balancesLoading, setBalancesLoading] = useState(false);
 
   useEffect(() => {
     if (!eoaAddress) return;
     
     async function loadBalances() {
+      setBalancesLoading(true);
       const tokenA = process.env.NEXT_PUBLIC_TOKEN_A_ADDRESS;
       const tokenB = process.env.NEXT_PUBLIC_TOKEN_B_ADDRESS;
       
@@ -60,6 +62,7 @@ export default function DashboardPage() {
       
       const native = await getNativeBalance(eoaAddress);
       setNativeBalance(native);
+      setBalancesLoading(false);
     }
     
     loadBalances();
@@ -233,17 +236,29 @@ export default function DashboardPage() {
           </div>
           <div className="rounded-xl border border-slate-200 p-4">
             <p className="text-xs text-slate-500">XDC Balance</p>
-            <p className="mt-1 text-lg font-semibold text-slate-900">{nativeBalance || "0"} XDC</p>
+            {balancesLoading ? (
+              <div className="mt-2 h-6 w-24 animate-pulse rounded bg-slate-200" />
+            ) : (
+              <p className="mt-1 text-lg font-semibold text-slate-900">{nativeBalance || "0"} XDC</p>
+            )}
           </div>
         </div>
         <div className="grid gap-4 md:grid-cols-2 mt-4">
           <div className="rounded-xl border border-slate-200 p-4">
             <p className="text-xs text-slate-500">{tokenASymbol} Balance</p>
-            <p className="mt-1 text-lg font-semibold text-slate-900">{tokenABalance || "0"} {tokenASymbol}</p>
+            {balancesLoading ? (
+              <div className="mt-2 h-6 w-24 animate-pulse rounded bg-slate-200" />
+            ) : (
+              <p className="mt-1 text-lg font-semibold text-slate-900">{tokenABalance || "0"} {tokenASymbol}</p>
+            )}
           </div>
           <div className="rounded-xl border border-slate-200 p-4">
             <p className="text-xs text-slate-500">{tokenBSymbol} Balance</p>
-            <p className="mt-1 text-lg font-semibold text-slate-900">{tokenBBalance || "0"} {tokenBSymbol}</p>
+            {balancesLoading ? (
+              <div className="mt-2 h-6 w-24 animate-pulse rounded bg-slate-200" />
+            ) : (
+              <p className="mt-1 text-lg font-semibold text-slate-900">{tokenBBalance || "0"} {tokenBSymbol}</p>
+            )}
           </div>
         </div>
       </div>

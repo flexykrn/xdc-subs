@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 
 import type { DeploymentRecord } from "@/lib/deployment";
-import { createModularSdk } from "@/lib/etherspot";
+import { getSmartAccountSnapshot } from "@/lib/etherspot";
 import { sendSubscriptionAction, type SubscriptionAction } from "@/lib/subscription";
 import { appendTelemetryRow, appendTelemetryRowRemote } from "@/lib/telemetry";
 import { connectWeb3Auth, getProviderAccounts, getProviderPrivateKey } from "@/lib/web3auth";
@@ -177,13 +177,15 @@ export default function SubscribePage() {
       // Step 2: Smart Account
       updateStep(1, "active", "Computing counterfactual address via Etherspot SDK...");
       
-      const sdk = createModularSdk(privateKey, defaultBundlerUrl);
-      const realSmartAccount = await sdk.getCounterFactualAddress();
-      const realBalance = await sdk.getNativeBalance();
+      const snapshot = await getSmartAccountSnapshot(privateKey, defaultBundlerUrl);
       
-      setSmartAccountAddress(realSmartAccount);
-      setNativeBalance(realBalance);
-      updateStep(1, "completed", `ERC-7579 Smart Account: ${realSmartAccount.slice(0, 20)}...${realSmartAccount.slice(-8)}`);
+      setSmartAccountAddress(snapshot.smartAccountAddress);
+      setNativeBalance(snapshot.nativeBalance);
+      if (snapshot.smartAccountAddress.includes("pending")) {
+        updateStep(1, "completed", `Smart Account (compute pending) — using EOA fallback`);
+      } else {
+        updateStep(1, "completed", `ERC-7579 Smart Account: ${snapshot.smartAccountAddress.slice(0, 20)}...${snapshot.smartAccountAddress.slice(-8)}`);
+      }
       await delay(500);
 
       // Step 3: Build UserOp
@@ -263,11 +265,31 @@ export default function SubscribePage() {
       setTxHash(result.txHash || "");
       updateStep(4, "completed", `UserOp submitted. Hash: ${(result.uoHash || "").slice(0, 30)}...`);
 
-      // Step 6: On-chain Confirmation
+      // Step 6: On-chain Confirmation with polling
       updateStep(5, "active", "Waiting for block confirmation on XDC Apothem...");
       
       if (result.txHash) {
-        updateStep(5, "completed", `Confirmed in block! Tx: ${result.txHash.slice(0, 30)}...`);
+        // Poll for confirmation
+        let confirmed = false;
+        for (let i = 0; i < 10; i++) {
+          await delay(3000);
+          try {
+            const response = await fetch(`${defaultExplorerUrl.replace(/\/$/, "")}/api?module=transaction&action=gettxreceiptstatus&txhash=${result.txHash}`);
+            const data = await response.json();
+            if (data.status === "1" && data.result.status === "1") {
+              confirmed = true;
+              break;
+            }
+          } catch {
+            // Explorer API might not support this, continue
+          }
+        }
+        
+        if (confirmed) {
+          updateStep(5, "completed", `Confirmed in block! Tx: ${result.txHash.slice(0, 30)}...`);
+        } else {
+          updateStep(5, "completed", `Submitted! Tx: ${result.txHash.slice(0, 30)}... (verify on explorer)`);
+        }
       } else {
         updateStep(5, "error", "Transaction failed to confirm");
       }
