@@ -1,5 +1,17 @@
 [
   {
+    "id": "1777226989465-9c3273cb77daa",
+    "timestamp": "2026-04-26T18:09:49.465Z",
+    "route": "/api/renewals/run",
+    "method": "POST",
+    "authorized": false,
+    "principal": "anonymous",
+    "authMethod": "none",
+    "statusCode": 401,
+    "note": "Unauthorized renewal run attempt",
+    "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/147.0.0.0 Safari/537.36"
+  },
+  {
     "id": "1777218324229-f6c7aa008f876",
     "timestamp": "2026-04-26T15:45:24.229Z",
     "route": "/api/renewals/run",

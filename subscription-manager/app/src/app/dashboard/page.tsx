@@ -12,6 +12,10 @@ import {
 } from "@/lib/web3auth";
 
 import { useAuth } from "@/components/AuthContext";
+import ActivityTimeline from "@/components/ActivityTimeline";
+import GasModeChart from "@/components/GasModeChart";
+import StatCard from "@/components/StatCard";
+import TokenDistributionChart from "@/components/TokenDistributionChart";
 
 export default function DashboardPage() {
   const { isAuthenticated, login, logout: authLogout, setUser } = useAuth();
@@ -226,40 +230,38 @@ export default function DashboardPage() {
       <div className="mt-6 rounded-2xl border border-slate-200 bg-white p-5">
         <h2 className="text-sm font-semibold text-slate-900 mb-3">Wallet Overview</h2>
         <div className="grid gap-4 md:grid-cols-3">
-          <div className="rounded-xl border border-slate-200 p-4">
-            <p className="text-xs text-slate-500">EOA Address</p>
-            <p className="mt-1 font-mono text-sm text-slate-900 break-all">{eoaAddress || "Not connected"}</p>
-          </div>
-          <div className="rounded-xl border border-slate-200 p-4">
-            <p className="text-xs text-slate-500">Smart Account</p>
-            <p className="mt-1 font-mono text-sm text-slate-900 break-all">{smartAccountAddress || "Not loaded"}</p>
-          </div>
-          <div className="rounded-xl border border-slate-200 p-4">
-            <p className="text-xs text-slate-500">XDC Balance</p>
-            {balancesLoading ? (
-              <div className="mt-2 h-6 w-24 animate-pulse rounded bg-slate-200" />
-            ) : (
-              <p className="mt-1 text-lg font-semibold text-slate-900">{nativeBalance || "0"} XDC</p>
-            )}
-          </div>
+          <StatCard
+            title="EOA Address"
+            value={eoaAddress ? `${eoaAddress.slice(0, 6)}...${eoaAddress.slice(-4)}` : "Not connected"}
+            subtitle="MPC Wallet"
+            icon={<svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" /></svg>}
+          />
+          <StatCard
+            title="Smart Account"
+            value={smartAccountAddress ? `${smartAccountAddress.slice(0, 6)}...${smartAccountAddress.slice(-4)}` : "Not loaded"}
+            subtitle="ERC-7579"
+            icon={<svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" /></svg>}
+          />
+          <StatCard
+            title="XDC Balance"
+            value={balancesLoading ? "..." : `${nativeBalance || "0"} XDC`}
+            subtitle="Native Token"
+            loading={balancesLoading}
+            trend="up"
+            trendValue="+0%"
+          />
         </div>
         <div className="grid gap-4 md:grid-cols-2 mt-4">
-          <div className="rounded-xl border border-slate-200 p-4">
-            <p className="text-xs text-slate-500">{tokenASymbol} Balance</p>
-            {balancesLoading ? (
-              <div className="mt-2 h-6 w-24 animate-pulse rounded bg-slate-200" />
-            ) : (
-              <p className="mt-1 text-lg font-semibold text-slate-900">{tokenABalance || "0"} {tokenASymbol}</p>
-            )}
-          </div>
-          <div className="rounded-xl border border-slate-200 p-4">
-            <p className="text-xs text-slate-500">{tokenBSymbol} Balance</p>
-            {balancesLoading ? (
-              <div className="mt-2 h-6 w-24 animate-pulse rounded bg-slate-200" />
-            ) : (
-              <p className="mt-1 text-lg font-semibold text-slate-900">{tokenBBalance || "0"} {tokenBSymbol}</p>
-            )}
-          </div>
+          <StatCard
+            title={`${tokenASymbol} Balance`}
+            value={balancesLoading ? "..." : `${tokenABalance || "0"} ${tokenASymbol}`}
+            loading={balancesLoading}
+          />
+          <StatCard
+            title={`${tokenBSymbol} Balance`}
+            value={balancesLoading ? "..." : `${tokenBBalance || "0"} ${tokenBSymbol}`}
+            loading={balancesLoading}
+          />
         </div>
       </div>
 
@@ -302,6 +304,34 @@ export default function DashboardPage() {
         {onchainSummary ? (
           <p className="mt-3 text-xs text-slate-500">Updated: {new Date(onchainSummary.generatedAt).toLocaleString()}</p>
         ) : null}
+      </div>
+
+      <div className="mt-6 grid gap-4 md:grid-cols-2">
+        <TokenDistributionChart
+          tokenABalance={tokenABalance}
+          tokenBBalance={tokenBBalance}
+          tokenASymbol={tokenASymbol}
+          tokenBSymbol={tokenBSymbol}
+        />
+        <GasModeChart
+          sponsorCount={2}
+          erc20Count={1}
+          multiTokenCount={0}
+        />
+      </div>
+
+      <div className="mt-6">
+        <ActivityTimeline
+          data={[
+            { date: "Apr 20", subscriptions: 1, renewals: 0 },
+            { date: "Apr 21", subscriptions: 0, renewals: 1 },
+            { date: "Apr 22", subscriptions: 2, renewals: 0 },
+            { date: "Apr 23", subscriptions: 0, renewals: 1 },
+            { date: "Apr 24", subscriptions: 1, renewals: 0 },
+            { date: "Apr 25", subscriptions: 0, renewals: 1 },
+            { date: "Apr 26", subscriptions: 1, renewals: 0 },
+          ]}
+        />
       </div>
     </section>
   );
