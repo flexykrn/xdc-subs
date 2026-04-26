@@ -1,0 +1,29 @@
+# Environment files - DO NOT COMMIT
+/subscription-manager/app/.env.local
+/subscription-manager/app/.env
+/subscription-manager/contracts/.env
+.env
+.env.local
+
+# Dependencies
+/subscription-manager/**/node_modules
+**/node_modules
+
+# Build output
+/subscription-manager/**/.next
+**/.next
+**/dist
+**/build
+
+# Contracts
+/subscription-manager/contracts/deployment.json
+/subscription-manager/contracts/cache
+/subscription-manager/contracts/artifacts
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Documentation (reference only - do not push without approval)
+/doc
+doc/
