@@ -1,3 +1,20 @@
+import { createPublicClient, http } from "viem";
+import { SERVICES } from "@/lib/services";
+
+const rpcUrl = process.env.NEXT_PUBLIC_APOTHEM_RPC_URL || "https://erpc.apothem.network";
+
+const publicClient = createPublicClient({
+  transport: http(rpcUrl),
+});
+
+const erc20BalanceAbi = [{
+  name: "balanceOf",
+  type: "function",
+  inputs: [{ name: "account", type: "address" }],
+  outputs: [{ type: "uint256" }],
+  stateMutability: "view",
+}] as const;
+
 export async function getBestTokenForPayment(walletAddress: string, requiredAmount: string): Promise<{ tokenAddress: string; symbol: string; balance: bigint } | null> {
   try {
     const results = await Promise.all(

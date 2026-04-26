@@ -1,11 +1,13 @@
 import { Interface } from "ethers";
 
 import { createPublicClient, http } from "viem";
+import { privateKeyToAccount } from "viem/accounts";
 import { APOTHEM_CHAIN } from "@/config/chains";
 import { subscribeDirect, renewDirect, pauseDirect, cancelDirect } from "@/lib/direct-tx";
 import { createModularSdk, type SmartAccountSnapshot } from "@/lib/etherspot";
 import { buildPaymasterContext, getPaymasterUrl, type GasMode } from "@/lib/etherspot";
 import { getBestTokenForPayment } from "@/lib/subscription-utils";
+import { SERVICES } from "@/lib/services";
 
 const rpcUrl = process.env.NEXT_PUBLIC_APOTHEM_RPC_URL || "https://erpc.apothem.network";
 
