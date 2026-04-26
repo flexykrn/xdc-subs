@@ -1,5 +1,6 @@
 import { APOTHEM_CHAIN } from "@/config/chains";
 import { EtherspotBundler, ModularSdk } from "@etherspot/modular-sdk";
+import { privateKeyToAccount } from "viem/accounts";
 
 export function getPaymasterUrl(apiKey: string) {
   return `https://arka.etherspot.io?apiKey=${apiKey}&chainId=${APOTHEM_CHAIN.chainIdDecimal}`;
@@ -10,6 +11,7 @@ export type GasMode = "sponsor" | "erc20" | "multi-token";
 export interface SmartAccountSnapshot {
   smartAccountAddress: string;
   nativeBalance: string;
+  eoaAddress: string;
 }
 
 export function createModularSdk(privateKey: string, bundlerUrl?: string): ModularSdk {
@@ -34,6 +36,10 @@ export async function getSmartAccountSnapshot(
   privateKey: string,
   bundlerUrl?: string,
 ): Promise<SmartAccountSnapshot> {
+  // Always compute EOA address
+  const eoaAccount = privateKeyToAccount(privateKey as `0x${string}`);
+  const eoaAddress = eoaAccount.address;
+
   try {
     const sdk = createModularSdk(privateKey, bundlerUrl);
     const [smartAccountAddress, nativeBalance] = await Promise.all([
@@ -44,13 +50,15 @@ export async function getSmartAccountSnapshot(
     return {
       smartAccountAddress,
       nativeBalance,
+      eoaAddress,
     };
   } catch (err) {
-    // Etherspot factory not deployed on XDC Apothem - return EOA-derived address
-    console.warn("[Etherspot] getCounterFactualAddress failed:", err);
+    // Etherspot factory not deployed on XDC Apothem - fallback to EOA
+    console.warn("[Etherspot] getCounterFactualAddress failed, using EOA:", err);
     return {
-      smartAccountAddress: "Smart account (compute pending)",
+      smartAccountAddress: eoaAddress,
       nativeBalance: "0",
+      eoaAddress,
     };
   }
 }

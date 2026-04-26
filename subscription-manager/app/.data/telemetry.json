@@ -1,0 +1,36 @@
+[
+  {
+    "action": "pause",
+    "mode": "sponsor",
+    "startedAt": "2026-04-26T19:51:26.070Z",
+    "result": "success",
+    "wallet": "0x5e6c5121035793b82576c99db6a791e67fa0518b",
+    "token": "0x896F79883Bf0620Afcd3D8942f1Db8d3F447AE84",
+    "subscriptionId": "1",
+    "uoHash": "fallback-eoa",
+    "txHash": "0xc3dcc2c872a47de448a0935fc8ad81fed137dd2c6a4185d52c762f01bc631cf2",
+    "confirmedAt": "2026-04-26T19:51:26.070Z"
+  },
+  {
+    "action": "subscribe",
+    "mode": "erc20",
+    "startedAt": "2026-04-26T19:49:56.066Z",
+    "result": "success",
+    "wallet": "0x5e6c5121035793b82576c99db6a791e67fa0518b",
+    "token": "0x4c4456bF7A0e572D2C697626025DcB6d3D3Df7D1",
+    "uoHash": "fallback-eoa",
+    "txHash": "0x3005e152334dd863c2ec3178b72154d3ff9478e85531a1b6e43146a5ecb8e520",
+    "confirmedAt": "2026-04-26T19:49:56.066Z"
+  },
+  {
+    "action": "subscribe",
+    "mode": "sponsor",
+    "startedAt": "2026-04-26T19:48:22.076Z",
+    "result": "success",
+    "wallet": "0x5e6c5121035793b82576c99db6a791e67fa0518b",
+    "token": "0x896F79883Bf0620Afcd3D8942f1Db8d3F447AE84",
+    "uoHash": "fallback-eoa",
+    "txHash": "0x469589356b5545f585c63eb739a981765a18e850226818c89722b5cedfe96d06",
+    "confirmedAt": "2026-04-26T19:48:22.076Z"
+  }
+]

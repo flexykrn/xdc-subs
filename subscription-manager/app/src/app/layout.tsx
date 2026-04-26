@@ -16,8 +16,9 @@ const ibmPlexMono = IBM_Plex_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Subscription Manager",
-  description: "Decentralized subscription manager on XDC Apothem",
+  title: "AA Subs - Gasless Web3 Subscriptions",
+  description: "Account Abstraction subscription manager with social login, gasless transactions, and automated renewals on XDC Network.",
+  keywords: ["web3", "account abstraction", "subscriptions", "gasless", "xdc", "etherspot", "web3auth"],
 };
 
 export default function RootLayout({
@@ -34,6 +35,22 @@ export default function RootLayout({
         <AuthProvider>
           <NavBar />
           <main className="mx-auto flex w-full max-w-5xl flex-1 px-4 py-6">{children}</main>
+          <footer className="border-t border-slate-200 bg-slate-50 py-6">
+            <div className="mx-auto max-w-5xl px-4 flex flex-col md:flex-row justify-between items-center gap-4">
+              <div>
+                <p className="text-sm font-semibold text-slate-900">AA Subs</p>
+                <p className="text-xs text-slate-500">Gasless Web3 subscriptions on XDC</p>
+              </div>
+              <div className="flex gap-4 text-xs text-slate-500">
+                <span>Web3Auth MPC</span>
+                <span>•</span>
+                <span>Etherspot ERC-7579</span>
+                <span>•</span>
+                <span>Arka Paymaster</span>
+              </div>
+              <p className="text-xs text-slate-400">Testnet Demo • Apothem Network</p>
+            </div>
+          </footer>
         </AuthProvider>
       </body>
     </html>

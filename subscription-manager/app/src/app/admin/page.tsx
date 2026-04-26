@@ -3,7 +3,6 @@
 import { useState } from "react";
 
 import AuthGuard from "@/components/AuthGuard";
-import { isDemoMode } from "@/lib/demo";
 import { sendSubscriptionAction } from "@/lib/subscription";
 import { connectWeb3Auth, getProviderAccounts, getProviderPrivateKey } from "@/lib/web3auth";
 
@@ -27,7 +26,6 @@ export default function AdminPage() {
   const [walletAddress, setWalletAddress] = useState("");
   const [userOpHash, setUserOpHash] = useState("");
   const [txHash, setTxHash] = useState("");
-  const demoMode = isDemoMode();
 
   const handleRun = async () => {
     setIsWorking(true);
@@ -38,23 +36,18 @@ export default function AdminPage() {
     setTxHash("");
 
     try {
-      if (!demoMode && !defaultSubscriptionManagerAddress) {
+      if (!defaultSubscriptionManagerAddress) {
         throw new Error("Missing NEXT_PUBLIC_SUBSCRIPTION_MANAGER_ADDRESS");
       }
 
-      if (!demoMode && !defaultArkaApiKey) {
+      if (!defaultArkaApiKey) {
         throw new Error("Missing NEXT_PUBLIC_ARKA_API_KEY");
       }
 
-      let privateKey = "";
-      let wallet = "0xdemo000000000000000000000000000000000003";
-
-      if (!demoMode) {
-        const provider = await connectWeb3Auth();
-        privateKey = await getProviderPrivateKey(provider);
-        const accounts = await getProviderAccounts(provider);
-        wallet = accounts[0] || "";
-      }
+      const provider = await connectWeb3Auth();
+      const privateKey = await getProviderPrivateKey(provider);
+      const accounts = await getProviderAccounts(provider);
+      const wallet = accounts[0] || "";
 
       setWalletAddress(wallet);
       setStatus("Sending admin action...");
@@ -99,11 +92,6 @@ export default function AdminPage() {
             🔒 OWNER ONLY
           </div>
         </div>
-        
-        {demoMode ? (
-          <p className="mt-2 text-xs text-emerald-700">Demo mode is active. Admin actions are simulated locally.</p>
-        ) : null}
-
         <div className="mt-6 rounded-2xl border border-slate-200 bg-white p-5">
           <label className="flex flex-col gap-2 text-sm text-slate-700">
             Action

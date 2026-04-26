@@ -1,6 +1,8 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Image from "next/image";
+import Link from "next/link";
 
 import { getTokenBalance, getTokenInfo, getNativeBalance } from "@/lib/blockchain";
 import { getSmartAccountSnapshot } from "@/lib/etherspot";
@@ -10,20 +12,37 @@ import {
   getProviderAccounts,
   getProviderPrivateKey,
 } from "@/lib/web3auth";
+import { getUserSubscriptions, type UserSubscription } from "@/lib/user-subscriptions";
 
 import { useAuth } from "@/components/AuthContext";
 
+const TOKEN_ADDRESSES = {
+  netflix: process.env.NEXT_PUBLIC_NETFLIX_TOKEN_ADDRESS || "",
+  spotify: process.env.NEXT_PUBLIC_SPOTIFY_TOKEN_ADDRESS || "",
+  youtube: process.env.NEXT_PUBLIC_YOUTUBE_TOKEN_ADDRESS || "",
+  jiohotstar: process.env.NEXT_PUBLIC_JIOHOTSTAR_TOKEN_ADDRESS || "",
+  claude: process.env.NEXT_PUBLIC_CLAUDE_TOKEN_ADDRESS || "",
+  copilot: process.env.NEXT_PUBLIC_COPILOT_TOKEN_ADDRESS || "",
+};
+
+interface TokenBalance {
+  symbol: string;
+  balance: string;
+  service: string;
+  logo: string;
+}
+
 export default function DashboardPage() {
-  const { isAuthenticated, login, logout: authLogout, setUser } = useAuth();
+  const { isAuthenticated, login, logout: authLogout, setUser, eoaAddress } = useAuth();
   const [isLoading, setIsLoading] = useState(false);
-  const [error, setError] = useState<string>("");
-  const [eoaAddress, setEoaAddress] = useState<string>("");
-  const [smartAccountAddress, setSmartAccountAddress] = useState<string>("");
-  const [nativeBalance, setNativeBalance] = useState<string>("");
-  const [tokenABalance, setTokenABalance] = useState<string>("");
-  const [tokenBBalance, setTokenBBalance] = useState<string>("");
-  const [tokenASymbol, setTokenASymbol] = useState<string>("TokenA");
-  const [tokenBSymbol, setTokenBSymbol] = useState<string>("TokenB");
+  const [error, setError] = useState("");
+  const [eoaAddressLocal, setEoaAddress] = useState("");
+  const [smartAccountAddress, setSmartAccountAddress] = useState("");
+  const [nativeBalance, setNativeBalance] = useState("0");
+  const [tokenBalances, setTokenBalances] = useState<TokenBalance[]>([]);
+  const [balancesLoading, setBalancesLoading] = useState(false);
+  const [subscriptions, setSubscriptions] = useState<UserSubscription[]>([]);
+  const [subsLoading, setSubsLoading] = useState(false);
   const [onchainSummary, setOnchainSummary] = useState<{
     totalScanned: number;
     activeCount: number;
@@ -31,39 +50,70 @@ export default function DashboardPage() {
     dueCount: number;
     generatedAt: string;
   } | null>(null);
-  const [statusLoading, setStatusLoading] = useState(false);
+  const [summaryLoading, setSummaryLoading] = useState(false);
 
+  // Load everything when wallet connects
   useEffect(() => {
-    if (!eoaAddress) return;
-    
-    async function loadBalances() {
-      const tokenA = process.env.NEXT_PUBLIC_TOKEN_A_ADDRESS;
-      const tokenB = process.env.NEXT_PUBLIC_TOKEN_B_ADDRESS;
-      
-      if (tokenA) {
-        const [balance, info] = await Promise.all([
-          getTokenBalance(tokenA, eoaAddress),
-          getTokenInfo(tokenA),
-        ]);
-        setTokenABalance(balance);
-        setTokenASymbol(info.symbol);
-      }
-      
-      if (tokenB) {
-        const [balance, info] = await Promise.all([
-          getTokenBalance(tokenB, eoaAddress),
-          getTokenInfo(tokenB),
-        ]);
-        setTokenBBalance(balance);
-        setTokenBSymbol(info.symbol);
-      }
-      
-      const native = await getNativeBalance(eoaAddress);
+    if (!eoaAddressLocal) return;
+    loadAllData();
+  }, [eoaAddressLocal]);
+
+  async function loadAllData() {
+    setBalancesLoading(true);
+    setSubsLoading(true);
+    setSummaryLoading(true);
+
+    try {
+      // Native balance
+      const native = await getNativeBalance(eoaAddressLocal);
       setNativeBalance(native);
+
+      // Token balances for all 6 services
+      const balances: TokenBalance[] = [];
+      const entries = [
+        { key: "netflix", service: "Netflix", logo: "/services/netflix.png" },
+        { key: "spotify", service: "Spotify", logo: "/services/spotify.png" },
+        { key: "youtube", service: "YouTube", logo: "/services/yt.png" },
+        { key: "jiohotstar", service: "JioHotstar", logo: "/services/jiohotstar.png" },
+        { key: "claude", service: "Claude", logo: "/services/claude code.png" },
+        { key: "copilot", service: "Copilot", logo: "/services/copliot.png" },
+      ];
+
+      for (const entry of entries) {
+        const addr = TOKEN_ADDRESSES[entry.key as keyof typeof TOKEN_ADDRESSES];
+        if (addr) {
+          const [bal, info] = await Promise.all([
+            getTokenBalance(addr, eoaAddressLocal),
+            getTokenInfo(addr),
+          ]);
+          balances.push({
+            symbol: info.symbol,
+            balance: bal,
+            service: entry.service,
+            logo: entry.logo,
+          });
+        }
+      }
+      setTokenBalances(balances);
+
+      // On-chain subscriptions
+      const subs = await getUserSubscriptions(eoaAddressLocal);
+      setSubscriptions(subs);
+
+      // On-chain summary
+      const response = await fetch("/api/subscriptions/status");
+      if (response.ok) {
+        const json = await response.json();
+        setOnchainSummary(json);
+      }
+    } catch (err) {
+      console.error("Dashboard load error:", err);
+    } finally {
+      setBalancesLoading(false);
+      setSubsLoading(false);
+      setSummaryLoading(false);
     }
-    
-    loadBalances();
-  }, [eoaAddress]);
+  }
 
   useEffect(() => {
     const saved = localStorage.getItem("aa-auth");
@@ -73,7 +123,7 @@ export default function DashboardPage() {
         if (data.isAuthenticated && data.eoaAddress) {
           setEoaAddress(data.eoaAddress);
           setSmartAccountAddress(data.smartAccountAddress || "");
-          setNativeBalance(data.nativeBalance || "");
+          setNativeBalance(data.nativeBalance || "0");
           setUser({
             eoaAddress: data.eoaAddress,
             smartAccountAddress: data.smartAccountAddress || "",
@@ -87,207 +137,224 @@ export default function DashboardPage() {
     }
   }, []);
 
-  async function loadOnchainSummary() {
-    setStatusLoading(true);
-    try {
-      const response = await fetch("/api/subscriptions/status");
-      if (!response.ok) {
-        setOnchainSummary(null);
-        return;
-      }
-
-      const json = (await response.json()) as {
-        totalScanned: number;
-        activeCount: number;
-        pausedCount: number;
-        dueCount: number;
-        generatedAt: string;
-      };
-      setOnchainSummary(json);
-    } catch {
-      setOnchainSummary(null);
-    } finally {
-      setStatusLoading(false);
-    }
-  }
-
   const handleConnect = async () => {
     setIsLoading(true);
     setError("");
-
     try {
-      console.log("Starting Web3Auth connection...");
       const provider = await connectWeb3Auth();
-      console.log("Web3Auth connected, getting accounts...");
-      
       const accounts = await getProviderAccounts(provider);
-      console.log("Accounts:", accounts);
-      
-      if (!accounts || accounts.length === 0) {
-        throw new Error("No accounts returned from Web3Auth");
-      }
-      
       const privateKey = await getProviderPrivateKey(provider);
-      console.log("Got private key, fetching smart account...");
-      
       const snapshot = await getSmartAccountSnapshot(privateKey, process.env.NEXT_PUBLIC_BUNDLER_URL);
-      console.log("Smart account:", snapshot.smartAccountAddress);
 
       const eoa = accounts[0];
       setEoaAddress(eoa);
       setSmartAccountAddress(snapshot.smartAccountAddress);
-      setNativeBalance(snapshot.nativeBalance);
       setUser({
         eoaAddress: eoa,
         smartAccountAddress: snapshot.smartAccountAddress,
         nativeBalance: snapshot.nativeBalance,
       });
       login();
-    } catch (connectError) {
-      console.error("Connection error:", connectError);
-      const message = connectError instanceof Error ? connectError.message : "Unknown connect error";
-      setError(`Connection failed: ${message}. Try: 1) Disable popup blockers 2) Use Chrome/Edge 3) Check console for details`);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Connection failed");
     } finally {
       setIsLoading(false);
     }
   };
 
   const handleDisconnect = async () => {
-    setIsLoading(true);
-    setError("");
-
-    try {
-      await disconnectWeb3Auth();
-      authLogout();
-      setEoaAddress("");
-      setSmartAccountAddress("");
-      setNativeBalance("");
-    } catch (disconnectError) {
-      const message = disconnectError instanceof Error ? disconnectError.message : "Unknown disconnect error";
-      setError(message);
-    } finally {
-      setIsLoading(false);
-    }
+    await disconnectWeb3Auth();
+    authLogout();
+    setEoaAddress("");
+    setSmartAccountAddress("");
+    setNativeBalance("0");
+    setTokenBalances([]);
+    setSubscriptions([]);
   };
 
   return (
-    <section className="w-full py-4">
-      <h1 className="text-2xl font-bold text-slate-900">Smart Account Dashboard</h1>
-      <p className="mt-2 text-sm text-slate-600">
-        Wallet overview, token balances, and subscription status.
-      </p>
+    <section className="w-full py-4 space-y-6">
+      {/* Header */}
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-2xl font-black text-slate-900">Dashboard</h1>
+          <p className="text-sm text-slate-500">Your smart account overview</p>
+        </div>
+        {isAuthenticated && (
+          <button
+            onClick={handleDisconnect}
+            className="rounded-lg border border-red-200 bg-red-50 px-3 py-1.5 text-xs font-semibold text-red-600 hover:bg-red-100"
+          >
+            Disconnect
+          </button>
+        )}
+      </div>
 
-      <div className="mt-6 rounded-2xl border border-slate-200 bg-white p-5">
-        <div className="flex items-center justify-between">
-          <h2 className="text-sm font-semibold text-slate-900">Session</h2>
-          {isAuthenticated && (
-            <span className="rounded-full bg-emerald-100 px-2 py-1 text-xs font-medium text-emerald-700">
-              ● Connected
-            </span>
+      {/* Session / Connect */}
+      {!isAuthenticated ? (
+        <div className="rounded-2xl border border-slate-200 bg-white p-6 text-center">
+          <p className="text-sm text-slate-600">Connect your wallet to view your dashboard</p>
+          <button
+            onClick={handleConnect}
+            disabled={isLoading}
+            className="mt-3 rounded-xl bg-slate-900 px-6 py-2.5 text-sm font-bold text-white disabled:opacity-60"
+          >
+            {isLoading ? "Connecting..." : "Connect Wallet"}
+          </button>
+          {error && <p className="mt-2 text-xs text-red-600">{error}</p>}
+        </div>
+      ) : null}
+
+      {/* Wallet Cards */}
+      {isAuthenticated && (
+        <div className="grid gap-3 md:grid-cols-3">
+          <div className="rounded-2xl border border-slate-200 bg-white p-5">
+            <p className="text-xs font-medium text-slate-400 uppercase tracking-wider">EOA Address</p>
+            <p className="mt-2 text-lg font-bold text-slate-900 font-mono">
+              {eoaAddressLocal ? `${eoaAddressLocal.slice(0, 8)}...${eoaAddressLocal.slice(-6)}` : "—"}
+            </p>
+            <p className="mt-1 text-xs text-slate-500">MPC Wallet via Web3Auth</p>
+          </div>
+
+          <div className="rounded-2xl border border-slate-200 bg-white p-5">
+            <p className="text-xs font-medium text-slate-400 uppercase tracking-wider">Smart Account</p>
+            <p className="mt-2 text-lg font-bold text-slate-900 font-mono">
+              {smartAccountAddress && !smartAccountAddress.includes("pending")
+                ? `${smartAccountAddress.slice(0, 8)}...${smartAccountAddress.slice(-6)}`
+                : smartAccountAddress || "—"}
+            </p>
+            <p className="mt-1 text-xs text-slate-500">ERC-7579 Modular Account</p>
+          </div>
+
+          <div className="rounded-2xl border border-slate-200 bg-white p-5">
+            <p className="text-xs font-medium text-slate-400 uppercase tracking-wider">XDC Balance</p>
+            <p className="mt-2 text-2xl font-black text-slate-900">
+              {balancesLoading ? "..." : `${parseFloat(nativeBalance || "0").toFixed(4)}`}
+            </p>
+            <p className="mt-1 text-xs text-slate-500">Native gas token</p>
+          </div>
+        </div>
+      )}
+
+      {/* Token Balances */}
+      {isAuthenticated && (
+        <div className="rounded-2xl border border-slate-200 bg-white p-5">
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-sm font-bold text-slate-900">Service Token Balances</h2>
+            <span className="text-xs text-slate-400">{tokenBalances.length} tokens</span>
+          </div>
+
+          {balancesLoading ? (
+            <div className="grid gap-3 md:grid-cols-3">
+              {[1, 2, 3, 4, 5, 6].map((i) => (
+                <div key={i} className="h-20 rounded-xl bg-slate-100 animate-pulse" />
+              ))}
+            </div>
+          ) : tokenBalances.length === 0 ? (
+            <p className="text-sm text-slate-500">No token balances found</p>
+          ) : (
+            <div className="grid gap-3 md:grid-cols-3">
+              {tokenBalances.map((token) => (
+                <div key={token.symbol} className="flex items-center gap-3 rounded-xl border border-slate-100 bg-slate-50 p-4">
+                  <div className="relative h-10 w-10 flex-shrink-0">
+                    <Image src={token.logo} alt={token.service} fill className="object-contain" sizes="40px" />
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <p className="text-sm font-bold text-slate-900">{parseFloat(token.balance).toFixed(2)} {token.symbol}</p>
+                    <p className="text-xs text-slate-500">{token.service}</p>
+                  </div>
+                </div>
+              ))}
+            </div>
           )}
         </div>
-        
-        {!isAuthenticated ? (
-          <div className="mt-3">
-            <button
-              type="button"
-              onClick={handleConnect}
-              disabled={isLoading}
-              className="rounded-lg bg-slate-900 px-4 py-2 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-60"
-            >
-              {isLoading ? "Connecting..." : "Connect with Web3Auth"}
-            </button>
-            <p className="mt-2 text-xs text-slate-500">Social login → MPC wallet → Smart account</p>
-          </div>
-        ) : (
-          <div className="mt-3 space-y-3">
-            <div className="flex items-center gap-3">
-              <button
-                type="button"
-                onClick={handleDisconnect}
-                disabled={isLoading}
-                className="rounded-lg border border-red-200 bg-red-50 px-4 py-2 text-sm font-semibold text-red-700 disabled:cursor-not-allowed disabled:opacity-60"
-              >
-                Disconnect
-              </button>
-            </div>
-          </div>
-        )}
-        {error && (
-          <div className="mt-3">
-            <p className="text-xs text-red-600">{error}</p>
-          </div>
-        )}
-      </div>
+      )}
 
-      <div className="mt-6 rounded-2xl border border-slate-200 bg-white p-5">
-        <h2 className="text-sm font-semibold text-slate-900 mb-3">Wallet Overview</h2>
-        <div className="grid gap-4 md:grid-cols-3">
-          <div className="rounded-xl border border-slate-200 p-4">
-            <p className="text-xs text-slate-500">EOA Address</p>
-            <p className="mt-1 font-mono text-sm text-slate-900 break-all">{eoaAddress || "Not connected"}</p>
+      {/* My Subscriptions */}
+      {isAuthenticated && (
+        <div className="rounded-2xl border border-slate-200 bg-white p-5">
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-sm font-bold text-slate-900">My Subscriptions</h2>
+            <Link href="/plans" className="rounded-lg bg-slate-900 px-3 py-1.5 text-xs font-bold text-white hover:bg-slate-800">
+              Subscribe
+            </Link>
           </div>
-          <div className="rounded-xl border border-slate-200 p-4">
-            <p className="text-xs text-slate-500">Smart Account</p>
-            <p className="mt-1 font-mono text-sm text-slate-900 break-all">{smartAccountAddress || "Not loaded"}</p>
-          </div>
-          <div className="rounded-xl border border-slate-200 p-4">
-            <p className="text-xs text-slate-500">XDC Balance</p>
-            <p className="mt-1 text-lg font-semibold text-slate-900">{nativeBalance || "0"} XDC</p>
-          </div>
+
+          {subsLoading ? (
+            <div className="space-y-2">
+              {[1, 2].map((i) => (
+                <div key={i} className="h-16 rounded-xl bg-slate-100 animate-pulse" />
+              ))}
+            </div>
+          ) : subscriptions.length === 0 ? (
+            <div className="rounded-xl border border-dashed border-slate-300 p-8 text-center">
+              <p className="text-sm font-medium text-slate-700">No active subscriptions</p>
+              <p className="mt-1 text-xs text-slate-500">
+                You haven&apos;t subscribed to any plans yet. All subscriptions are tracked on the blockchain.
+              </p>
+              <Link href="/plans" className="mt-3 inline-block rounded-lg bg-cyan-500 px-4 py-2 text-xs font-bold text-white hover:bg-cyan-400">
+                Browse Plans →
+              </Link>
+            </div>
+          ) : (
+            <div className="grid gap-3 md:grid-cols-2">
+              {subscriptions.map((sub) => (
+                <div key={sub.subscriptionId} className="flex items-center gap-4 rounded-xl border border-slate-100 bg-slate-50 p-4">
+                  {sub.logo && (
+                    <div className="relative h-12 w-12 flex-shrink-0">
+                      <Image src={sub.logo} alt={sub.serviceName} fill className="object-contain" sizes="48px" />
+                    </div>
+                  )}
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-2">
+                      <p className="text-sm font-bold text-slate-900">{sub.serviceName}</p>
+                      <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${
+                        sub.active && !sub.paused ? "bg-emerald-100 text-emerald-700" : sub.paused ? "bg-amber-100 text-amber-700" : "bg-slate-100 text-slate-600"
+                      }`}>
+                        {sub.active && !sub.paused ? "Active" : sub.paused ? "Paused" : "Inactive"}
+                      </span>
+                    </div>
+                    <p className="text-xs text-slate-500">{sub.tierName} • {sub.priceLabel}</p>
+                    {sub.nextRenewalAt > 0 && (
+                      <p className="text-xs text-slate-400">Renews {new Date(sub.nextRenewalAt * 1000).toLocaleDateString()}</p>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
-        <div className="grid gap-4 md:grid-cols-2 mt-4">
-          <div className="rounded-xl border border-slate-200 p-4">
-            <p className="text-xs text-slate-500">{tokenASymbol} Balance</p>
-            <p className="mt-1 text-lg font-semibold text-slate-900">{tokenABalance || "0"} {tokenASymbol}</p>
-          </div>
-          <div className="rounded-xl border border-slate-200 p-4">
-            <p className="text-xs text-slate-500">{tokenBSymbol} Balance</p>
-            <p className="mt-1 text-lg font-semibold text-slate-900">{tokenBBalance || "0"} {tokenBSymbol}</p>
-          </div>
+      )}
+
+      {/* On-chain Summary */}
+      {isAuthenticated && (
+        <div className="rounded-2xl border border-slate-200 bg-white p-5">
+          <h2 className="text-sm font-bold text-slate-900 mb-4">Network Activity</h2>
+          {summaryLoading && !onchainSummary ? (
+            <div className="grid gap-3 md:grid-cols-4">
+              {[1, 2, 3, 4].map((i) => (
+                <div key={i} className="h-20 rounded-xl bg-slate-100 animate-pulse" />
+              ))}
+            </div>
+          ) : onchainSummary ? (
+            <div className="grid gap-3 md:grid-cols-4">
+              {[
+                { label: "Total", value: onchainSummary.totalScanned, color: "text-slate-900" },
+                { label: "Active", value: onchainSummary.activeCount, color: "text-emerald-600" },
+                { label: "Paused", value: onchainSummary.pausedCount, color: "text-amber-600" },
+                { label: "Due", value: onchainSummary.dueCount, color: "text-red-600" },
+              ].map((stat) => (
+                <div key={stat.label} className="rounded-xl border border-slate-100 bg-slate-50 p-4 text-center">
+                  <p className={`text-2xl font-black ${stat.color}`}>{stat.value}</p>
+                  <p className="mt-1 text-xs text-slate-500">{stat.label}</p>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <p className="text-sm text-slate-500">Loading network data...</p>
+          )}
         </div>
-      </div>
-
-      <div className="mt-6 rounded-2xl border border-slate-200 bg-white p-5">
-        <div className="flex items-center justify-between">
-          <h2 className="text-sm font-semibold text-slate-900">Onchain Subscriptions</h2>
-          <button
-            type="button"
-            onClick={loadOnchainSummary}
-            disabled={statusLoading}
-            className="rounded-lg border border-slate-300 px-3 py-1 text-xs font-semibold text-slate-700 disabled:opacity-60"
-          >
-            {statusLoading ? "Refreshing..." : "Refresh"}
-          </button>
-        </div>
-
-        {!onchainSummary ? (
-          <p className="mt-3 text-xs text-slate-600">Click Refresh to load onchain data.</p>
-        ) : (
-          <div className="mt-3 grid gap-3 md:grid-cols-4">
-            <div className="rounded-xl border border-slate-200 p-3">
-              <p className="text-xs text-slate-500">Scanned</p>
-              <p className="mt-1 text-lg font-semibold text-slate-900">{onchainSummary.totalScanned}</p>
-            </div>
-            <div className="rounded-xl border border-slate-200 p-3">
-              <p className="text-xs text-slate-500">Active</p>
-              <p className="mt-1 text-lg font-semibold text-slate-900">{onchainSummary.activeCount}</p>
-            </div>
-            <div className="rounded-xl border border-slate-200 p-3">
-              <p className="text-xs text-slate-500">Paused</p>
-              <p className="mt-1 text-lg font-semibold text-slate-900">{onchainSummary.pausedCount}</p>
-            </div>
-            <div className="rounded-xl border border-slate-200 p-3">
-              <p className="text-xs text-slate-500">Due Now</p>
-              <p className="mt-1 text-lg font-semibold text-slate-900">{onchainSummary.dueCount}</p>
-            </div>
-          </div>
-        )}
-
-        {onchainSummary ? (
-          <p className="mt-3 text-xs text-slate-500">Updated: {new Date(onchainSummary.generatedAt).toLocaleString()}</p>
-        ) : null}
-      </div>
+      )}
     </section>
   );
 }

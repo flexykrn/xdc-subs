@@ -23,20 +23,6 @@ const publicClient = createPublicClient({
   transport: http(rpcUrl),
 });
 
-const viemChain = {
-  id: APOTHEM_CHAIN.chainIdDecimal,
-  name: APOTHEM_CHAIN.chainName,
-  nativeCurrency: APOTHEM_CHAIN.nativeCurrency,
-  rpcUrls: {
-    default: { http: [APOTHEM_CHAIN.rpcUrl] },
-    public: { http: [APOTHEM_CHAIN.rpcUrl] },
-  },
-  blockExplorers: {
-    default: { name: "Apothem Explorer", url: APOTHEM_CHAIN.explorerUrl },
-  },
-  testnet: true,
-} as const;
-
 const subscriptionManagerAbi = [
   {
     name: "subscribe",
@@ -125,11 +111,31 @@ export async function subscribeDirect(
         address: tokenAddress as `0x${string}`,
         abi: erc20Abi,
         functionName: "approve",
-        args: [subscriptionManagerAddress as `0x${string}`, BigInt(price)],
+        args: [subscriptionManagerAddress as `0x${string}`, BigInt(price) * BigInt(10)], // approve 10x to avoid re-approve
       });
       console.log("[DirectTx] Approval tx:", approveHash);
-      // Wait for approval to mine
-      await new Promise((resolve) => setTimeout(resolve, 3000));
+      
+      // Actually wait for approval to be mined
+      let receipt = null;
+      for (let i = 0; i < 30; i++) {
+        await new Promise((resolve) => setTimeout(resolve, 2000));
+        try {
+          receipt = await publicClient.getTransactionReceipt({ hash: approveHash });
+          if (receipt && receipt.status === 'success') {
+            console.log("[DirectTx] Approval confirmed");
+            break;
+          }
+        } catch {
+          // Receipt not available yet, retry
+        }
+      }
+      
+      if (!receipt || receipt.status !== 'success') {
+        throw new Error("Token approval failed or timed out. Please try again.");
+      }
+      
+      // Small buffer after confirmation
+      await new Promise((resolve) => setTimeout(resolve, 1000));
     }
   }
 
