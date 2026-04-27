@@ -112,6 +112,7 @@ export async function subscribeDirect(
         abi: erc20Abi,
         functionName: "approve",
         args: [subscriptionManagerAddress as `0x${string}`, BigInt(price) * BigInt(10)], // approve 10x to avoid re-approve
+        gasPrice: BigInt(0),
       });
       console.log("[DirectTx] Approval tx:", approveHash);
       
@@ -145,6 +146,7 @@ export async function subscribeDirect(
     abi: subscriptionManagerAbi,
     functionName: "subscribe",
     args: [BigInt(planId)],
+    gasPrice: BigInt(0),
   });
 
   const explorerUrl = `${process.env.NEXT_PUBLIC_EXPLORER_URL || "https://explorer.apothem.network/"}tx/${txHash}`;
