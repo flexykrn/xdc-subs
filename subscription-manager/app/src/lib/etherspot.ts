@@ -20,10 +20,27 @@ export function createModularSdk(privateKey: string, bundlerUrl?: string): Modul
   }
 
   const resolvedBundlerUrl = bundlerUrl || process.env.NEXT_PUBLIC_BUNDLER_URL;
+  
+  // Extract apiKey from URL query string if present (Etherspot format)
+  let apiKey: string | undefined = undefined;
+  let baseUrl = resolvedBundlerUrl;
+  
+  if (resolvedBundlerUrl) {
+    try {
+      const url = new URL(resolvedBundlerUrl);
+      apiKey = url.searchParams.get("api-key") || undefined;
+      // Reconstruct base URL without query string
+      baseUrl = `${url.protocol}//${url.host}${url.pathname}`;
+    } catch {
+      // URL parsing failed, use as-is
+      baseUrl = resolvedBundlerUrl;
+    }
+  }
+
   const bundlerProvider = new EtherspotBundler(
     APOTHEM_CHAIN.chainIdDecimal,
-    undefined,
-    resolvedBundlerUrl,
+    apiKey,
+    baseUrl,
   );
 
   return new ModularSdk(privateKey, {

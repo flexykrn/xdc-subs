@@ -162,6 +162,11 @@ export async function sendSubscriptionAction(
     }
   }
 
+  // Check native balance for fallback decision
+  const eoaAccount = privateKeyToAccount(privateKey as `0x${string}`);
+  const nativeBalanceWei = await publicClient.getBalance({ address: eoaAccount.address });
+  const hasNativeGas = nativeBalanceWei > BigInt(0);
+
   // Try Etherspot AA first
   try {
     const sdk = createModularSdk(privateKey, params.bundlerUrl);
@@ -227,9 +232,19 @@ export async function sendSubscriptionAction(
       eoaAddress: "",
     };
   } catch (etherspotError) {
-    console.warn("[Subscription] Etherspot failed, falling back to direct EOA:", etherspotError);
+    console.warn("[Subscription] Etherspot AA failed:", etherspotError);
 
-    // Fallback to direct EOA transaction
+    // If user has NO native gas and AA failed, they cannot proceed
+    if (!hasNativeGas) {
+      throw new Error(
+        "Account Abstraction gas sponsorship is temporarily unavailable on XDC Apothem testnet. " +
+        "Your wallet has 0 tXDC, so the EOA fallback path cannot execute either. " +
+        "Please get a small amount of free tXDC from https://faucet.apothem.network/ to proceed. " +
+        "On mainnet, the Arka paymaster sponsors gas seamlessly — no native tokens needed."
+      );
+    }
+
+    // Fallback to direct EOA transaction (only if user has gas)
     let result;
     switch (params.action) {
       case "subscribe":
