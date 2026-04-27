@@ -5,6 +5,7 @@ import { privateKeyToAccount } from "viem/accounts";
 import { subscribeDirect, renewDirect, pauseDirect, cancelDirect } from "@/lib/direct-tx";
 import { getBestTokenForPayment } from "@/lib/subscription-utils";
 import { SERVICES } from "@/lib/services";
+import { subscribeAA } from "./aa-client";
 
 const rpcUrl = process.env.NEXT_PUBLIC_APOTHEM_RPC_URL || "https://erpc.apothem.network";
 
@@ -146,31 +147,43 @@ export async function sendSubscriptionAction(
     }
   }
 
-  // ── EOA Fallback with Deployer-Sponsored Gas ──
-  // On XDC Apothem testnet, the Etherspot AA SDK has infrastructure gaps:
-  // 1. Factory ABI mismatch between Etherspot's code and our deployed SimpleAccountFactory
-  // 2. Bundler returns 400 for eth_chainId (network not fully supported)
-  // 3. Paymaster sponsorship works but requires ERC-4337 infra that's unstable on testnet
-  //
-  // For reliable UX during the demo, we use EOA fallback with auto-funded gas:
-  // - User has 0 tXDC → /api/gas-station sends 0.01 tXDC from deployer
-  // - User pays only service tokens (ERC20) for the subscription itself
-  // - Gas is "sponsored" by the deployer (simulating paymaster behavior)
-  //
-  // On mainnet, this would be replaced by true AA + Arka Paymaster (gasless).
-  console.log("[Subscription] Using EOA fallback with deployer-sponsored gas");
+  // ── Account Abstraction Flow ──
+  // Sponsor mode: Real ERC-4337 UserOp through EntryPoint + Paymaster
+  // ERC20 mode: EOA fallback with TokenGasPaymaster swap for gas
+  console.log("[Subscription] Mode:", params.mode);
 
   let fallback;
   switch (params.action) {
     case "subscribe":
-      fallback = await subscribeDirect(
-        privateKey,
-        params.subscriptionManagerAddress,
-        params.planId ?? 0,
-        resolvedTokenAddress,
-        resolvedTokenAmount,
-        params.mode === "multi-token" ? "sponsor" : params.mode,
-      );
+      if (params.mode === "sponsor" || params.mode === "multi-token") {
+        // Real AA: UserOp via EntryPoint + Paymaster
+        console.log("[Subscription] Using AA UserOp flow");
+        const eoaAddress = privateKeyToAccount(privateKey as `0x${string}`).address;
+        fallback = await subscribeAA(
+          privateKey,
+          eoaAddress,
+          params.subscriptionManagerAddress,
+          params.planId ?? 0,
+          resolvedTokenAddress,
+          resolvedTokenAmount,
+        );
+        // Map AA result to DirectTxResult shape
+        fallback = {
+          txHash: fallback.txHash,
+          explorerUrl: fallback.explorerUrl,
+        };
+      } else {
+        // ERC20 mode: EOA with paymaster swap
+        console.log("[Subscription] Using ERC20 EOA fallback");
+        fallback = await subscribeDirect(
+          privateKey,
+          params.subscriptionManagerAddress,
+          params.planId ?? 0,
+          resolvedTokenAddress,
+          resolvedTokenAmount,
+          "erc20",
+        );
+      }
       break;
     case "renew":
       fallback = await renewDirect(
