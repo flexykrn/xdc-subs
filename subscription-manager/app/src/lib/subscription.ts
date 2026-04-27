@@ -278,11 +278,9 @@ export async function sendSubscriptionAction(
     }
 
     if (!hasNativeGas) {
-      throw new Error(
-        "Gasless infrastructure is unavailable right now (Etherspot and local relay both failed). " +
-        "Your wallet has 0 tXDC, so EOA fallback cannot execute. " +
-        "Please verify PAYMASTER_ADDRESS and deployer/relay private key envs, then retry."
-      );
+      // Even with 0 tXDC, let the EOA fallback try — direct-tx.ts has a gas station
+      // that auto-funds from the deployer. Don't block here.
+      console.warn("[Subscription] No native gas, but letting EOA fallback attempt with gas station");
     }
 
     let fallback;
