@@ -98,6 +98,23 @@ export default function SubscribePage() {
     checkNative();
   }, [eoaAddress]);
 
+  // Auto-select best payment mode based on balances
+  useEffect(() => {
+    if (!selectedTier || !isAuthenticated) return;
+    
+    const hasNative = nativeBalance !== null && Number(nativeBalance) > 0;
+    const hasTokens = balance !== null && Number(balance) >= Number(selectedTier.tier.price);
+    
+    if (!hasNative && hasTokens) {
+      // No native gas but has service tokens → use ERC20-gas (paymaster accepts tokens)
+      setMode("erc20");
+    } else if (hasNative) {
+      // Has native gas → prefer gasless (sponsor) for best UX
+      setMode("sponsor");
+    }
+    // else: keep current mode (will fail gracefully with honest error)
+  }, [nativeBalance, balance, selectedTier, isAuthenticated]);
+
   const handleSubscribe = async () => {
     if (!selectedTier) return;
     setError("");
@@ -248,7 +265,15 @@ export default function SubscribePage() {
 
             {/* Gas Mode */}
             <div className="rounded-2xl border border-slate-200 bg-white p-5">
-              <p className="text-xs font-medium text-slate-400 uppercase tracking-wider mb-3">Payment Mode</p>
+              <div className="flex items-center justify-between mb-3">
+                <p className="text-xs font-medium text-slate-400 uppercase tracking-wider">Payment Mode</p>
+                {mode === "erc20" && nativeBalance !== null && Number(nativeBalance) === 0 && (
+                  <span className="text-xs font-bold text-emerald-600">Auto-selected (no tXDC)</span>
+                )}
+                {mode === "sponsor" && nativeBalance !== null && Number(nativeBalance) > 0 && (
+                  <span className="text-xs font-bold text-emerald-600">Auto-selected (gasless)</span>
+                )}
+              </div>
               <div className="flex gap-2">
                 {(["sponsor", "erc20", "multi-token"] as const).map((m) => (
                   <button
@@ -266,7 +291,12 @@ export default function SubscribePage() {
                 ))}
               </div>
               {mode === "sponsor" && (
-                <p className="mt-2 text-xs text-emerald-600">Arka Paymaster sponsors your gas. You pay $0.</p>
+                <p className="mt-2 text-xs text-emerald-600">Arka Paymaster sponsors your gas. You pay $0 in native tokens.</p>
+              )}
+              {mode === "erc20" && (
+                <p className="mt-2 text-xs text-cyan-600">
+                  Paymaster accepts {selectedService?.name} tokens for gas. No native tXDC needed.
+                </p>
               )}
             </div>
 
