@@ -29,7 +29,7 @@ export async function POST(request: Request) {
     }
 
     const body = await request.json();
-    const { to }: { to?: string } = body;
+    const { to, amount }: { to?: string; amount?: string } = body;
 
     if (!to || !to.startsWith("0x") || to.length !== 42) {
       return NextResponse.json(
@@ -55,15 +55,29 @@ export async function POST(request: Request) {
       );
     }
 
-    // Check if recipient already has gas
-    const recipientBalance = await publicClient.getBalance({ address: to as `0x${string}` });
-    if (recipientBalance >= parseEther("0.05")) {
-      return NextResponse.json(
-        { success: true, funded: false, reason: "Recipient already has sufficient gas" }
-      );
+    // Determine amount to send
+    let sendAmount: bigint;
+    if (amount && amount !== "0") {
+      // Exact amount requested (in wei string)
+      sendAmount = BigInt(amount);
+    } else {
+      // Default: check if recipient needs any gas
+      const recipientBalance = await publicClient.getBalance({ address: to as `0x${string}` });
+      if (recipientBalance > 0) {
+        return NextResponse.json(
+          { success: true, funded: false, reason: "Recipient already has gas" }
+        );
+      }
+      sendAmount = parseEther("0.05"); // default fallback
     }
 
-    // Send 0.05 tXDC for gas (enough for approve + subscribe + buffer)
+    // Cap at reasonable max to prevent draining
+    const maxAmount = parseEther("0.1");
+    if (sendAmount > maxAmount) {
+      sendAmount = maxAmount;
+    }
+
+    // Send tXDC
     const walletClient = createWalletClient({
       account: deployerAccount,
       chain: viemChain,
@@ -72,7 +86,7 @@ export async function POST(request: Request) {
 
     const txHash = await walletClient.sendTransaction({
       to: to as `0x${string}`,
-      value: parseEther("0.05"),
+      value: sendAmount,
     });
 
     // Wait for receipt
@@ -98,7 +112,7 @@ export async function POST(request: Request) {
       success: true,
       funded: true,
       txHash,
-      amount: "0.05",
+      amount: (Number(sendAmount) / 1e18).toString(),
       recipient: to,
     });
   } catch (error) {

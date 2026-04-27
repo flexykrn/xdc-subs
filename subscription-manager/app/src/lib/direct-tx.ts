@@ -97,23 +97,69 @@ export async function subscribeDirect(
     transport: http(rpcUrl),
   });
 
-  // Auto-fund gas if needed — deployer sponsors testnet gas
+  // Auto-fund gas if needed — deployer sponsors testnet gas with EXACT amount
   const nativeBalance = await publicClient.getBalance({ address: account.address });
-  const hasNoGas = nativeBalance <= BigInt(0);
   
-  console.log("[DirectTx] Native balance check:", {
+  // Estimate gas for approve + subscribe
+  const gasPrice = await publicClient.getGasPrice();
+  let estimatedGasCost = 0n;
+  
+  if (tokenAddress && price) {
+    // Estimate approve gas
+    try {
+      const approveGas = await publicClient.estimateContractGas({
+        address: tokenAddress as `0x${string}`,
+        abi: erc20Abi,
+        functionName: "approve",
+        args: [subscriptionManagerAddress as `0x${string}`, BigInt(price) * BigInt(10)],
+        account: account.address,
+      });
+      estimatedGasCost += approveGas * gasPrice;
+    } catch {
+      // fallback: approve typically ~45k gas
+      estimatedGasCost += BigInt(50000) * gasPrice;
+    }
+  }
+  
+  // Estimate subscribe gas
+  try {
+    const subscribeGas = await publicClient.estimateContractGas({
+      address: subscriptionManagerAddress as `0x${string}`,
+      abi: subscriptionManagerAbi,
+      functionName: "subscribe",
+      args: [BigInt(planId)],
+      account: account.address,
+    });
+    estimatedGasCost += subscribeGas * gasPrice;
+  } catch {
+    // fallback: subscribe typically ~80k gas
+    estimatedGasCost += BigInt(100000) * gasPrice;
+  }
+  
+  // Add 30% buffer for safety
+  const requiredGas = (estimatedGasCost * BigInt(130)) / BigInt(100);
+  const hasEnoughGas = nativeBalance >= requiredGas;
+  
+  console.log("[DirectTx] Gas estimation:", {
     address: account.address,
     nativeBalance: nativeBalance.toString(),
-    hasNoGas,
+    gasPrice: gasPrice.toString(),
+    estimatedCost: estimatedGasCost.toString(),
+    requiredWithBuffer: requiredGas.toString(),
+    hasEnoughGas,
   });
   
-  if (hasNoGas) {
-    console.log("[DirectTx] User has 0 gas, requesting deployer sponsorship...");
+  if (!hasEnoughGas) {
+    const shortfall = requiredGas - nativeBalance;
+    console.log("[DirectTx] User needs", shortfall.toString(), "more gas, requesting deployer sponsorship...");
     try {
       const fundResponse = await fetch("/api/gas-station", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ to: account.address }),
+        body: JSON.stringify({ 
+          to: account.address,
+          amount: shortfall.toString(), // exact amount needed
+        }),
       });
       console.log("[DirectTx] Gas station response status:", fundResponse.status);
       const fundData = await fundResponse.json();
@@ -124,9 +170,6 @@ export async function subscribeDirect(
           "Gas sponsorship failed: " + (fundData.error || fundData.reason || "Unknown error")
         );
       }
-      if (!fundData.funded && fundData.reason) {
-        console.log("[DirectTx] Gas station skipped:", fundData.reason);
-      }
       if (fundData.funded) {
         console.log("[DirectTx] Gas sponsored, txHash:", fundData.txHash);
         // Wait for balance to update
@@ -135,7 +178,7 @@ export async function subscribeDirect(
         // Verify balance actually increased
         const newBalance = await publicClient.getBalance({ address: account.address });
         console.log("[DirectTx] Balance after funding:", newBalance.toString());
-        if (newBalance <= BigInt(0)) {
+        if (newBalance < requiredGas) {
           throw new Error("Gas funding did not arrive. Deployer may be out of tXDC or network delayed.");
         }
       }

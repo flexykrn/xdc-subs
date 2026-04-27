@@ -100,22 +100,23 @@ export default function SubscribePage() {
     checkNative();
   }, [eoaAddress]);
 
-  // Auto-select best payment mode based on balances
+  // Payment mode auto-selection: only "sponsor" and "multi-token" work on testnet
+  // "erc20" (pay-in-tokens for gas) requires TokenPaymaster which isn't deployed on Apothem
   useEffect(() => {
     if (!selectedTier || !isAuthenticated) return;
     
-    const hasNative = nativeBalance !== null && Number(nativeBalance) > 0;
     const hasTokens = balance !== null && Number(balance) >= Number(selectedTier.tier.price);
     
-    if (!hasNative && hasTokens) {
-      // No native gas but has service tokens → use ERC20-gas (paymaster accepts tokens)
-      setMode("erc20");
-    } else if (hasNative) {
-      // Has native gas → prefer gasless (sponsor) for best UX
+    // ERC20 gas mode not functional on testnet — redirect to sponsor
+    if (mode === "erc20") {
       setMode("sponsor");
     }
-    // else: keep current mode (will fail gracefully with honest error)
-  }, [nativeBalance, balance, selectedTier, isAuthenticated]);
+    
+    // Default to gasless (sponsor) for all testnet transactions
+    if (!hasTokens) {
+      // Will fail gracefully with "needs tokens" message
+    }
+  }, [balance, selectedTier, isAuthenticated, mode]);
 
   const handleSubscribe = async () => {
     if (!selectedTier) return;
@@ -268,40 +269,39 @@ export default function SubscribePage() {
               </div>
             )}
 
-            {/* Gas Mode */}
+            {/* Payment Mode */}
             <div className="rounded-2xl border border-slate-200 bg-white p-5">
-              <div className="flex items-center justify-between mb-3">
-                <p className="text-xs font-medium text-slate-400 uppercase tracking-wider">Payment Mode</p>
-                {mode === "erc20" && nativeBalance !== null && Number(nativeBalance) === 0 && (
-                  <span className="text-xs font-bold text-emerald-600">Auto-selected (no tXDC)</span>
-                )}
-                {mode === "sponsor" && nativeBalance !== null && Number(nativeBalance) > 0 && (
-                  <span className="text-xs font-bold text-emerald-600">Auto-selected (gasless)</span>
-                )}
-              </div>
-              <div className="flex gap-2">
-                {(["sponsor", "erc20", "multi-token"] as const).map((m) => (
-                  <button
-                    key={m}
-                    onClick={() => setMode(m)}
-                    disabled={isWorking}
-                    className={`flex-1 rounded-lg border px-3 py-2 text-xs font-bold transition ${
-                      mode === m
-                        ? "border-cyan-300 bg-cyan-50 text-cyan-700"
-                        : "border-slate-200 bg-white text-slate-600 hover:bg-slate-50"
-                    }`}
-                  >
-                    {m === "sponsor" ? "🎁 Gasless" : m === "erc20" ? "💰 ERC20 Gas" : "⚡ Best Route"}
-                  </button>
-                ))}
-              </div>
+              <p className="text-xs font-medium text-slate-400 uppercase tracking-wider mb-3">Payment</p>
+              
               {mode === "sponsor" && (
-                <p className="mt-2 text-xs text-emerald-600">Arka Paymaster sponsors your gas. You pay $0 in native tokens.</p>
+                <div className="flex items-center gap-2 text-xs text-emerald-700 bg-emerald-50 rounded-lg p-3">
+                  <span className="text-lg">🎁</span>
+                  <span>
+                    <strong>Gasless Subscription</strong> — The deployer sponsors your gas on this testnet. 
+                    You only pay with {selectedService?.name} tokens.
+                  </span>
+                </div>
               )}
+              
               {mode === "erc20" && (
-                <p className="mt-2 text-xs text-cyan-600">
-                  Paymaster accepts {selectedService?.name} tokens for gas. No native tXDC needed.
-                </p>
+                <div className="flex items-center gap-2 text-xs text-amber-700 bg-amber-50 rounded-lg p-3">
+                  <span className="text-lg">⚠️</span>
+                  <span>
+                    <strong>Testnet Limitation</strong> — ERC20 gas (pay-in-tokens) requires a TokenPaymaster 
+                    contract which is not deployed on XDC Apothem. On mainnet, this mode lets you pay gas 
+                    with {selectedService?.name} tokens directly.
+                  </span>
+                </div>
+              )}
+              
+              {mode === "multi-token" && (
+                <div className="flex items-center gap-2 text-xs text-cyan-700 bg-cyan-50 rounded-lg p-3">
+                  <span className="text-lg">⚡</span>
+                  <span>
+                    <strong>Best Route</strong> — Auto-selects the token with highest balance. 
+                    Same gasless experience, just picks the optimal token for you.
+                  </span>
+                </div>
               )}
             </div>
 
