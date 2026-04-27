@@ -58,6 +58,26 @@ export default function HistoryPage() {
     });
   }, [modeFilter, resultFilter, rows, subscriptionFilter, eoaAddress]);
 
+  // Build real chart data from filtered rows
+  const chartData = useMemo(() => {
+    if (filteredRows.length === 0) return [];
+    
+    const byDate = new Map<string, { success: number; failed: number }>();
+    
+    for (const row of filteredRows) {
+      const date = row.startedAt ? new Date(row.startedAt).toLocaleDateString("en-US", { month: "short", day: "numeric" }) : "Unknown";
+      const existing = byDate.get(date) || { success: 0, failed: 0 };
+      if (row.result === "success") existing.success++;
+      else if (row.result === "failed") existing.failed++;
+      byDate.set(date, existing);
+    }
+    
+    // Sort by date
+    return Array.from(byDate.entries())
+      .sort((a, b) => new Date(a[0]).getTime() - new Date(b[0]).getTime())
+      .map(([date, counts]) => ({ date, ...counts }));
+  }, [filteredRows]);
+
   const hasRows = filteredRows.length > 0;
   const csv = useMemo(() => telemetryRowsToCsv(filteredRows), [filteredRows]);
 
@@ -165,14 +185,14 @@ export default function HistoryPage() {
       <div className="mt-6 grid gap-4 md:grid-cols-2 lg:grid-cols-4">
         <StatCard
           title="Successful UserOps"
-          value={rows.filter(r => r.result === "success").length}
+          value={filteredRows.filter(r => r.result === "success").length}
           trend="up"
           trendValue="100%"
           icon={<svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>}
         />
         <StatCard
           title="Gas Savings"
-          value={`${rows.filter(r => r.mode === "sponsor" && r.result === "success").length * 100}%`}
+          value={`${filteredRows.filter(r => r.mode === "sponsor" && r.result === "success").length > 0 ? "100%" : "0%"}`}
           subtitle="Sponsor mode"
           trend="up"
           trendValue="Free"
@@ -180,30 +200,27 @@ export default function HistoryPage() {
         />
         <StatCard
           title="Batched Txs"
-          value={rows.filter(r => r.uoHash).length * 2}
+          value={filteredRows.filter(r => r.uoHash).length * 2}
           subtitle="Approve + Subscribe"
           icon={<svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" /></svg>}
         />
         <StatCard
           title="ERC20 Payments"
-          value={rows.filter(r => r.mode === "erc20").length}
+          value={filteredRows.filter(r => r.mode === "erc20").length}
           subtitle="Gas paid in tokens"
           icon={<svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" /></svg>}
         />
       </div>
 
       <div className="mt-6">
-        <TransactionVolumeChart
-          data={[
-            { date: "Apr 20", success: 1, failed: 0 },
-            { date: "Apr 21", success: 1, failed: 0 },
-            { date: "Apr 22", success: 2, failed: 0 },
-            { date: "Apr 23", success: 1, failed: 0 },
-            { date: "Apr 24", success: 1, failed: 0 },
-            { date: "Apr 25", success: 1, failed: 0 },
-            { date: "Apr 26", success: 1, failed: 0 },
-          ]}
-        />
+        {chartData.length > 0 ? (
+          <TransactionVolumeChart data={chartData} />
+        ) : (
+          <div className="rounded-2xl border border-dashed border-slate-300 bg-white p-8 text-center">
+            <p className="text-sm font-medium text-slate-700">No transaction history yet</p>
+            <p className="mt-1 text-xs text-slate-500">Your transaction volume chart will appear here after your first subscription.</p>
+          </div>
+        )}
       </div>
 
       <div className="mt-6 flex flex-wrap gap-2">

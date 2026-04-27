@@ -5,6 +5,7 @@ import Image from "next/image";
 import Link from "next/link";
 
 import { getServiceById, getTierByPlanId } from "@/lib/services";
+import { getNativeBalance } from "@/lib/blockchain";
 import { getSmartAccountSnapshot } from "@/lib/etherspot";
 import { sendSubscriptionAction } from "@/lib/subscription";
 import { appendTelemetryRow, appendTelemetryRowRemote } from "@/lib/telemetry";
@@ -29,8 +30,10 @@ export default function SubscribePage() {
   const [smartAccount, setSmartAccount] = useState("");
   const [balance, setBalance] = useState<string | null>(null);
   const [needsTokens, setNeedsTokens] = useState(false);
+  const [nativeBalance, setNativeBalance] = useState<string | null>(null);
+  const [needsGas, setNeedsGas] = useState(false);
   const [showSuccess, setShowSuccess] = useState(false);
-  const [step, setStep] = useState(0); // 0=idle, 1=connecting, 2=building, 3=paymaster, 4=bundler, 5=confirming, 6=done
+  const [step, setStep] = useState(0);
 
   const selectedService = useMemo(() => getServiceById(serviceId), [serviceId]);
   const selectedTier = useMemo(() => getTierByPlanId(Number(planId)), [planId]);
@@ -42,7 +45,7 @@ export default function SubscribePage() {
     setPlanId(params.get("planId") || "1");
   }, []);
 
-  // Check token balance when service/tier is selected
+  // Check token balance + native balance when service/tier is selected
   useEffect(() => {
     if (!selectedTier) return;
     const checkBalance = async () => {
@@ -50,6 +53,13 @@ export default function SubscribePage() {
         const provider = await connectWeb3Auth();
         const accounts = await getProviderAccounts(provider);
         if (!accounts[0]) return;
+        
+        // Check native balance (tXDC for gas)
+        const native = await getNativeBalance(accounts[0]);
+        setNativeBalance(native);
+        setNeedsGas(parseFloat(native || "0") < 0.001);
+        
+        // Check token balance
         const rpcUrl = process.env.NEXT_PUBLIC_APOTHEM_RPC_URL || "https://erpc.apothem.network";
         const response = await fetch(rpcUrl, {
           method: "POST",
@@ -75,10 +85,7 @@ export default function SubscribePage() {
 
   const handleSubscribe = async () => {
     if (!selectedTier) return;
-    
-    // Check if user has tokens before attempting
     setError("");
-    
     setIsWorking(true);
     setStep(1);
     setTxHash("");
@@ -99,6 +106,12 @@ export default function SubscribePage() {
       setStep(2);
       const snapshot = await getSmartAccountSnapshot(privateKey, BUNDLER_URL);
       setSmartAccount(snapshot.smartAccountAddress);
+
+      // Check native balance again before submitting
+      const nativeBal = await getNativeBalance(wallet);
+      if (parseFloat(nativeBal || "0") < 0.0001) {
+        throw new Error("You need tXDC (gas) to subscribe. Your wallet has 0 tXDC. Please visit the Faucet page to get gas funds.");
+      }
 
       // Step 3: Build + Paymaster
       setStep(3);
@@ -143,11 +156,8 @@ export default function SubscribePage() {
       setShowSuccess(true);
     } catch (err) {
       const msg = err instanceof Error ? err.message : "Transaction failed";
-      if (msg.includes("insufficient") || msg.includes("allowance") || msg.includes("0xe450")) {
-        setError(`Insufficient tokens. You need ${selectedTier?.tier.priceLabel} to subscribe. Ask the admin to mint test tokens to your wallet.`);
-      } else {
-        setError(msg);
-      }
+      // Show REAL error message — don't hide it behind generic text
+      setError(msg);
       setStep(0);
     } finally {
       setIsWorking(false);
@@ -203,6 +213,23 @@ export default function SubscribePage() {
               </div>
             </div>
 
+            {/* Native Balance (Gas) */}
+            {nativeBalance !== null && needsGas && (
+              <div className="rounded-xl p-3 text-xs bg-rose-50 border border-rose-200 text-rose-800">
+                <div className="flex items-center justify-between gap-2">
+                  <span>⛽ <strong>0 tXDC</strong> — You need gas (tXDC) for transactions</span>
+                  <Link href="/faucet" className="rounded-md bg-rose-200 px-2 py-1 font-bold text-rose-900 hover:bg-rose-300 whitespace-nowrap">
+                    Get Gas →
+                  </Link>
+                </div>
+              </div>
+            )}
+            {nativeBalance !== null && !needsGas && (
+              <div className="rounded-xl p-3 text-xs bg-slate-50 border border-slate-200 text-slate-600">
+                Gas Balance: <strong>{parseFloat(nativeBalance).toFixed(4)} tXDC</strong>
+              </div>
+            )}
+
             {/* Token Balance */}
             {balance !== null && (
               <div className={`rounded-xl p-3 text-xs ${needsTokens ? 'bg-amber-50 border border-amber-200 text-amber-800' : 'bg-emerald-50 border border-emerald-200 text-emerald-700'}`}>
@@ -246,7 +273,7 @@ export default function SubscribePage() {
             {/* Subscribe Button */}
             <button
               onClick={handleSubscribe}
-              disabled={isWorking}
+              disabled={isWorking || needsTokens || needsGas}
               className="w-full rounded-xl bg-slate-900 py-4 text-sm font-black text-white transition hover:bg-slate-800 disabled:opacity-60 disabled:cursor-not-allowed"
             >
               {isWorking ? stepLabels[step] || "Processing..." : `Subscribe for ${selectedTier.tier.priceLabel}`}
@@ -264,7 +291,13 @@ export default function SubscribePage() {
 
             {error && (
               <div className="rounded-xl border border-red-200 bg-red-50 p-3 text-xs text-red-700">
-                {error}
+                <p className="font-bold">Transaction failed:</p>
+                <p className="mt-1">{error}</p>
+                {error.includes("tXDC") && (
+                  <Link href="/faucet" className="mt-2 inline-block rounded-md bg-red-200 px-2 py-1 font-bold text-red-900 hover:bg-red-300">
+                    Go to Faucet →
+                  </Link>
+                )}
               </div>
             )}
 

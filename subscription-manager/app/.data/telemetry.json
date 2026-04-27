@@ -1,5 +1,27 @@
 [
   {
+    "action": "subscribe",
+    "mode": "erc20",
+    "startedAt": "2026-04-27T04:27:18.874Z",
+    "result": "success",
+    "wallet": "0x5e6c5121035793b82576c99db6a791e67fa0518b",
+    "token": "0x591CCebbd943a2F9a11F64eBf627d86600a0f38e",
+    "uoHash": "fallback-eoa",
+    "txHash": "0x68fae99412d81233ec4e665d5600309e4f1fd10cd900035790ee0002b8b21bdd",
+    "confirmedAt": "2026-04-27T04:27:18.874Z"
+  },
+  {
+    "action": "subscribe",
+    "mode": "sponsor",
+    "startedAt": "2026-04-27T04:26:44.976Z",
+    "result": "success",
+    "wallet": "0x5e6c5121035793b82576c99db6a791e67fa0518b",
+    "token": "0x9F00925759A9F0FEb13373336B761A7267AE66a9",
+    "uoHash": "fallback-eoa",
+    "txHash": "0x9ed715927298b891187c4d17d23b530aaba94999b0af59853631e545d4b78beb",
+    "confirmedAt": "2026-04-27T04:26:44.976Z"
+  },
+  {
     "action": "pause",
     "mode": "sponsor",
     "startedAt": "2026-04-26T19:51:26.070Z",

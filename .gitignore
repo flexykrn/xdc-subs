@@ -4,6 +4,7 @@
 /subscription-manager/contracts/.env
 .env
 .env.local
+fluidflow
 
 # Dependencies
 /subscription-manager/**/node_modules

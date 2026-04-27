@@ -100,12 +100,15 @@ export default function DashboardPage() {
       const subs = await getUserSubscriptions(eoaAddressLocal);
       setSubscriptions(subs);
 
-      // On-chain summary
-      const response = await fetch("/api/subscriptions/status");
-      if (response.ok) {
-        const json = await response.json();
-        setOnchainSummary(json);
-      }
+      // User's own on-chain summary (NOT global)
+      const now = Math.floor(Date.now() / 1000);
+      setOnchainSummary({
+        totalScanned: subs.length,
+        activeCount: subs.filter(s => s.active && !s.paused).length,
+        pausedCount: subs.filter(s => s.paused).length,
+        dueCount: subs.filter(s => s.active && !s.paused && s.nextRenewalAt <= now).length,
+        generatedAt: new Date().toISOString(),
+      });
     } catch (err) {
       console.error("Dashboard load error:", err);
     } finally {
