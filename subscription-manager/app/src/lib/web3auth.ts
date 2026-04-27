@@ -1,5 +1,10 @@
 import { APOTHEM_CHAIN } from "@/config/chains";
-import { CHAIN_NAMESPACES, WEB3AUTH_NETWORK, type IProvider } from "@web3auth/base";
+import {
+  CHAIN_NAMESPACES,
+  WEB3AUTH_NETWORK,
+  WALLET_ADAPTERS,
+  type IProvider,
+} from "@web3auth/base";
 import { EthereumPrivateKeyProvider } from "@web3auth/ethereum-provider";
 import { Web3Auth } from "@web3auth/modal";
 
@@ -52,18 +57,39 @@ export async function getWeb3Auth(): Promise<Web3Auth> {
   } as never);
 
   initPromise = (async () => {
-    try {
-      await web3auth.initModal();
-      web3authInstance = web3auth;
-      return web3auth;
-    } catch (e) {
-      // If already initialized, just return it
-      if ((e as Error)?.message?.includes("already initialized")) {
+    const maxRetries = 2;
+    for (let attempt = 0; attempt < maxRetries; attempt++) {
+      try {
+        await web3auth.initModal({
+          modalConfig: {
+            [WALLET_ADAPTERS.AUTH]: {
+              label: "auth",
+              showOnModal: true,
+            },
+          },
+        });
         web3authInstance = web3auth;
         return web3auth;
+      } catch (e) {
+        const errorMsg = (e as Error)?.message || "";
+        console.warn(`[Web3Auth] initModal attempt ${attempt + 1} failed:`, errorMsg);
+
+        if (errorMsg.includes("already initialized")) {
+          web3authInstance = web3auth;
+          return web3auth;
+        }
+
+        if (attempt < maxRetries - 1) {
+          await new Promise((resolve) => setTimeout(resolve, 1000));
+        } else {
+          throw new Error(
+            `Web3Auth initialization failed after ${maxRetries} attempts: ${errorMsg}. ` +
+            `Please check your internet connection and verify the Web3Auth Client ID is valid for SAPPHIRE_DEVNET.`
+          );
+        }
       }
-      throw e;
     }
+    return web3auth;
   })();
 
   return initPromise;

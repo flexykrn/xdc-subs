@@ -7,8 +7,6 @@ import { sendSubscriptionAction } from "@/lib/subscription";
 import { connectWeb3Auth, getProviderAccounts, getProviderPrivateKey } from "@/lib/web3auth";
 
 const defaultSubscriptionManagerAddress = process.env.NEXT_PUBLIC_SUBSCRIPTION_MANAGER_ADDRESS || "";
-const defaultArkaApiKey = process.env.NEXT_PUBLIC_ARKA_API_KEY || "";
-const defaultBundlerUrl = process.env.NEXT_PUBLIC_BUNDLER_URL || "";
 const defaultExplorerUrl = process.env.NEXT_PUBLIC_EXPLORER_URL || "https://explorer.apothem.network/";
 
 type AdminAction = "createPlan" | "setTreasury";
@@ -40,10 +38,6 @@ export default function AdminPage() {
         throw new Error("Missing NEXT_PUBLIC_SUBSCRIPTION_MANAGER_ADDRESS");
       }
 
-      if (!defaultArkaApiKey) {
-        throw new Error("Missing NEXT_PUBLIC_ARKA_API_KEY");
-      }
-
       const provider = await connectWeb3Auth();
       const privateKey = await getProviderPrivateKey(provider);
       const accounts = await getProviderAccounts(provider);
@@ -62,8 +56,6 @@ export default function AdminPage() {
         planIntervalSeconds: Number(planIntervalDays) * 24 * 60 * 60,
         tokenAddress,
         treasuryAddress,
-        bundlerUrl: defaultBundlerUrl || undefined,
-        arkaApiKey: defaultArkaApiKey,
       });
 
       setUserOpHash(result.uoHash || "");

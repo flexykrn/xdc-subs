@@ -5,7 +5,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useAuth } from "./AuthContext";
 
-import { getSmartAccountSnapshot } from "@/lib/etherspot";
+import { getSmartAccountInfo } from "@/lib/aa-relay";
 import {
   connectWeb3Auth,
   disconnectWeb3Auth,
@@ -43,10 +43,7 @@ export default function NavBar() {
       const provider = await connectWeb3Auth();
       const accounts = await getProviderAccounts(provider);
       const privateKey = await getProviderPrivateKey(provider);
-      const snapshot = await getSmartAccountSnapshot(
-        privateKey,
-        process.env.NEXT_PUBLIC_BUNDLER_URL
-      );
+      const snapshot = await getSmartAccountInfo(privateKey);
 
       // Update auth context
       const eoa = accounts[0] || "";
@@ -57,8 +54,8 @@ export default function NavBar() {
         JSON.stringify({
           isAuthenticated: true,
           eoaAddress: eoa,
-          smartAccountAddress: snapshot.smartAccountAddress,
-          nativeBalance: snapshot.nativeBalance,
+          smartAccountAddress: snapshot.address,
+          nativeBalance: "0",
         })
       );
       window.location.reload();

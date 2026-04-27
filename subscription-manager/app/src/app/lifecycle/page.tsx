@@ -13,8 +13,6 @@ import { getTierByPlanId } from "@/lib/services";
 import Image from "next/image";
 
 const defaultSubscriptionManagerAddress = process.env.NEXT_PUBLIC_SUBSCRIPTION_MANAGER_ADDRESS || "";
-const defaultArkaApiKey = process.env.NEXT_PUBLIC_ARKA_API_KEY || "";
-const defaultBundlerUrl = process.env.NEXT_PUBLIC_BUNDLER_URL || "";
 
 type LifecycleAction = "renew" | "pause" | "cancel";
 
@@ -95,10 +93,6 @@ export default function LifecyclePage() {
         throw new Error("Missing NEXT_PUBLIC_SUBSCRIPTION_MANAGER_ADDRESS");
       }
 
-      if (!defaultArkaApiKey) {
-        throw new Error("Missing NEXT_PUBLIC_ARKA_API_KEY");
-      }
-
       const provider = await connectWeb3Auth();
       const accounts = await getProviderAccounts(provider);
       const wallet = accounts[0] || "";
@@ -118,8 +112,6 @@ export default function LifecyclePage() {
             tokenAddress: row.planTokenAddress,
             tokenAmount: row.planPriceWei,
             approvalAmount: row.planPriceWei,
-            bundlerUrl: defaultBundlerUrl || undefined,
-            arkaApiKey: defaultArkaApiKey,
           });
 
           const telemetryRow = {

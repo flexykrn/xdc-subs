@@ -3,9 +3,7 @@ import { Interface } from "ethers";
 import { createPublicClient, http } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
 import { APOTHEM_CHAIN } from "@/config/chains";
-import { subscribeDirect, renewDirect, pauseDirect, cancelDirect } from "@/lib/direct-tx";
-import { createModularSdk, type SmartAccountSnapshot } from "@/lib/etherspot";
-import { buildPaymasterContext, getPaymasterUrl, type GasMode } from "@/lib/etherspot";
+import { sendAATransaction, type Call, type SmartAccountInfo, getSmartAccountInfo } from "@/lib/aa-relay";
 import { getBestTokenForPayment } from "@/lib/subscription-utils";
 import { SERVICES } from "@/lib/services";
 
@@ -47,7 +45,7 @@ export function buildEmptyBillingRecord(mode: BillingRecord["mode"]): BillingRec
 export interface SendSubscriptionActionParams {
   privateKey?: string;
   action: SubscriptionAction;
-  mode: GasMode;
+  mode: "sponsor" | "erc20" | "multi-token";
   subscriptionManagerAddress: string;
   tokenAddress?: string;
   planId?: number;
@@ -57,12 +55,13 @@ export interface SendSubscriptionActionParams {
   planPrice?: string;
   planIntervalSeconds?: number;
   treasuryAddress?: string;
-  bundlerUrl?: string;
-  arkaApiKey?: string;
 }
 
-export interface SendSubscriptionActionResult extends BillingRecord, SmartAccountSnapshot {
+export interface SendSubscriptionActionResult extends BillingRecord {
   action: SubscriptionAction;
+  smartAccountAddress: string;
+  eoaAddress: string;
+  nativeBalance: string;
 }
 
 const ERC20_APPROVE_ABI = ["function approve(address spender, uint256 amount)"];
@@ -75,14 +74,6 @@ const SUBSCRIPTION_MANAGER_ABI = [
   "function pause(uint256 subscriptionId)",
   "function cancel(uint256 subscriptionId)",
 ];
-
-function getRequiredEnvValue(value: string | undefined, label: string): string {
-  if (!value) {
-    throw new Error(`Missing ${label}`);
-  }
-
-  return value;
-}
 
 function getSubscriptionCallData(params: SendSubscriptionActionParams): { target: string; data: string } {
   const managerInterface = new Interface(SUBSCRIPTION_MANAGER_ABI);
@@ -138,17 +129,26 @@ export async function sendSubscriptionAction(
     throw new Error("Private key is required. Please connect your wallet first.");
   }
 
+  const eoa = privateKeyToAccount(privateKey as `0x${string}`);
+
+  // Get smart account info
+  let smartAccountInfo: SmartAccountInfo;
+  try {
+    smartAccountInfo = await getSmartAccountInfo(privateKey);
+  } catch (err) {
+    console.warn("[Subscription] Failed to get smart account info:", err);
+    throw new Error("Failed to initialize smart account. Please try again.");
+  }
+
   // Multi-token: pick best token automatically
   let resolvedTokenAddress = params.tokenAddress;
   let resolvedTokenAmount = params.tokenAmount;
-  
+
   if (params.mode === "multi-token" && params.action === "subscribe") {
     try {
-      const eoaAccount = privateKeyToAccount(privateKey as `0x${string}`);
-      const best = await getBestTokenForPayment(eoaAccount.address, params.tokenAmount || "0");
+      const best = await getBestTokenForPayment(eoa.address, params.tokenAmount || "0");
       if (best) {
         resolvedTokenAddress = best.tokenAddress;
-        // Find the plan price for this token's service
         const service = SERVICES.find(s => s.tokenAddress === best.tokenAddress);
         if (service) {
           const tier = service.tiers.find(t => t.planId === params.planId);
@@ -162,138 +162,56 @@ export async function sendSubscriptionAction(
     }
   }
 
-  // Check native balance for fallback decision
-  const eoaAccount = privateKeyToAccount(privateKey as `0x${string}`);
-  const nativeBalanceWei = await publicClient.getBalance({ address: eoaAccount.address });
-  const hasNativeGas = nativeBalanceWei > BigInt(0);
+  // Build calls for AA batching
+  const calls: Call[] = [];
 
-  // Try Etherspot AA first
+  // For subscribe/renew with ERC20, add approval call first
+  if (
+    (params.action === "subscribe" || params.action === "renew") &&
+    resolvedTokenAddress
+  ) {
+    const approvalAmount = params.approvalAmount ?? resolvedTokenAmount ?? "0";
+    const erc20Interface = new Interface(ERC20_APPROVE_ABI);
+    calls.push({
+      to: resolvedTokenAddress as `0x${string}`,
+      data: erc20Interface.encodeFunctionData("approve", [
+        params.subscriptionManagerAddress,
+        approvalAmount,
+      ]) as `0x${string}`,
+    });
+  }
+
+  // Add the main subscription action call
+  const callData = getSubscriptionCallData(params);
+  calls.push({
+    to: callData.target as `0x${string}`,
+    data: callData.data as `0x${string}`,
+  });
+
+  // Send via AA relay (gasless!)
   try {
-    const sdk = createModularSdk(privateKey, params.bundlerUrl);
-    const smartAccountAddress = await sdk.getCounterFactualAddress();
-    const nativeBalance = await sdk.getNativeBalance();
-
-    await sdk.clearUserOpsFromBatch();
-
-    if ((params.action === "subscribe" || params.action === "renew") && resolvedTokenAddress) {
-      const approvalAmount = params.approvalAmount ?? resolvedTokenAmount ?? "0";
-      const erc20Interface = new Interface(ERC20_APPROVE_ABI);
-
-      await sdk.addUserOpsToBatch({
-        to: resolvedTokenAddress,
-        data: erc20Interface.encodeFunctionData("approve", [params.subscriptionManagerAddress, approvalAmount]),
-      });
-    }
-
-    const callData = getSubscriptionCallData(params);
-
-    await sdk.addUserOpsToBatch({
-      to: callData.target,
-      data: callData.data,
-    });
-
-    const paymasterDetails = {
-      url: getPaymasterUrl(getRequiredEnvValue(params.arkaApiKey, "NEXT_PUBLIC_ARKA_API_KEY")),
-      context: buildPaymasterContext(params.mode, resolvedTokenAddress),
-    };
-
-    const estimatedUserOp = await sdk.estimate({
-      paymasterDetails,
-    });
-
-    const userOpHash = await sdk.send(estimatedUserOp);
-    
-    // Poll for receipt (up to 60 seconds)
-    let txHash = "";
-    for (let i = 0; i < 20; i++) {
-      await new Promise((resolve) => setTimeout(resolve, 3000));
-      try {
-        txHash = await sdk.getUserOpReceipt(userOpHash);
-        if (txHash) break;
-      } catch {
-        // Receipt not ready yet, continue polling
-      }
-    }
-
-    await sdk.clearUserOpsFromBatch();
+    const result = await sendAATransaction({ privateKey, calls });
 
     return {
       action: params.action,
       mode: params.mode,
       token: resolvedTokenAddress,
       subscriptionId: params.subscriptionId?.toString(),
-      uoHash: userOpHash,
-      txHash,
-      startedAt: new Date().toISOString(),
-      confirmedAt: new Date().toISOString(),
-      result: txHash ? "success" : "failed",
-      smartAccountAddress,
-      nativeBalance,
-      eoaAddress: "",
-    };
-  } catch (etherspotError) {
-    console.warn("[Subscription] Etherspot AA failed:", etherspotError);
-
-    // If user has NO native gas and AA failed, they cannot proceed
-    if (!hasNativeGas) {
-      throw new Error(
-        "Account Abstraction gas sponsorship is temporarily unavailable on XDC Apothem testnet. " +
-        "Your wallet has 0 tXDC, so the EOA fallback path cannot execute either. " +
-        "Please get a small amount of free tXDC from https://faucet.apothem.network/ to proceed. " +
-        "On mainnet, the Arka paymaster sponsors gas seamlessly — no native tokens needed."
-      );
-    }
-
-    // Fallback to direct EOA transaction (only if user has gas)
-    let result;
-    switch (params.action) {
-      case "subscribe":
-        result = await subscribeDirect(
-          privateKey,
-          params.subscriptionManagerAddress,
-          params.planId ?? 0,
-          resolvedTokenAddress,
-          resolvedTokenAmount
-        );
-        break;
-      case "renew":
-        result = await renewDirect(
-          privateKey,
-          params.subscriptionManagerAddress,
-          params.subscriptionId ?? 0
-        );
-        break;
-      case "pause":
-        result = await pauseDirect(
-          privateKey,
-          params.subscriptionManagerAddress,
-          params.subscriptionId ?? 0
-        );
-        break;
-      case "cancel":
-        result = await cancelDirect(
-          privateKey,
-          params.subscriptionManagerAddress,
-          params.subscriptionId ?? 0
-        );
-        break;
-      default:
-        throw new Error(`Action ${params.action} not supported in fallback mode`);
-    }
-
-    return {
-      action: params.action,
-      mode: params.mode,
-      token: resolvedTokenAddress,
-      subscriptionId: params.subscriptionId?.toString(),
-      uoHash: "fallback-eoa",
+      uoHash: result.txHash, // Using txHash as uoHash for simplicity
       txHash: result.txHash,
       startedAt: new Date().toISOString(),
       confirmedAt: new Date().toISOString(),
       result: "success",
-      smartAccountAddress: result.explorerUrl.includes("tx/") ? "EOA fallback (see tx)" : "EOA fallback active",
-      nativeBalance: "0",
-      eoaAddress: "",
+      smartAccountAddress: result.smartAccountAddress,
+      eoaAddress: eoa.address,
+      nativeBalance: "0", // User has no native balance in AA mode
     };
+  } catch (aaError) {
+    console.error("[Subscription] AA relay failed:", aaError);
+    throw new Error(
+      aaError instanceof Error
+        ? `Gasless transaction failed: ${aaError.message}`
+        : "Gasless transaction failed. Please try again."
+    );
   }
 }

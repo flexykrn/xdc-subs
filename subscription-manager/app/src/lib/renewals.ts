@@ -2,8 +2,6 @@ import { sendSubscriptionAction } from "@/lib/subscription";
 import { fetchOnchainSubscriptionSnapshot } from "@/lib/onchain-subscriptions";
 
 const SM_ADDRESS = process.env.NEXT_PUBLIC_SUBSCRIPTION_MANAGER_ADDRESS || "";
-const ARKA_KEY = process.env.NEXT_PUBLIC_ARKA_API_KEY || "";
-const BUNDLER_URL = process.env.NEXT_PUBLIC_BUNDLER_URL || "";
 
 // Keeper wallet for auto-renewals (should be funded with gas tokens)
 const KEEPER_PRIVATE_KEY = process.env.KEEPER_PRIVATE_KEY || "";
@@ -94,11 +92,11 @@ export async function executeRenewals(candidates: RenewalCandidate[]): Promise<R
     }));
   }
 
-  if (!SM_ADDRESS || !ARKA_KEY) {
+  if (!SM_ADDRESS) {
     return candidates.map((c) => ({
       subscriptionId: c.subscriptionId,
       status: "skipped" as const,
-      error: "Contract or paymaster not configured",
+      error: "Contract not configured",
     }));
   }
 
@@ -112,8 +110,6 @@ export async function executeRenewals(candidates: RenewalCandidate[]): Promise<R
         mode: "sponsor",
         subscriptionManagerAddress: SM_ADDRESS,
         subscriptionId: candidate.subscriptionId,
-        bundlerUrl: BUNDLER_URL || undefined,
-        arkaApiKey: ARKA_KEY,
       });
 
       results.push({

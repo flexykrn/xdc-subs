@@ -5,7 +5,7 @@ import Image from "next/image";
 import Link from "next/link";
 
 import { getServiceById, getTierByPlanId } from "@/lib/services";
-import { getSmartAccountSnapshot } from "@/lib/etherspot";
+import { getSmartAccountInfo } from "@/lib/aa-relay";
 import { sendSubscriptionAction } from "@/lib/subscription";
 import { appendTelemetryRow, appendTelemetryRowRemote } from "@/lib/telemetry";
 import { connectWeb3Auth, getProviderAccounts, getProviderPrivateKey } from "@/lib/web3auth";
@@ -15,8 +15,6 @@ import AuthGuard from "@/components/AuthGuard";
 import SuccessModal from "@/components/SuccessModal";
 
 const SM_ADDRESS = process.env.NEXT_PUBLIC_SUBSCRIPTION_MANAGER_ADDRESS || "";
-const ARKA_KEY = process.env.NEXT_PUBLIC_ARKA_API_KEY || "";
-const BUNDLER_URL = process.env.NEXT_PUBLIC_BUNDLER_URL || "";
 const EXPLORER_URL = process.env.NEXT_PUBLIC_EXPLORER_URL || "https://explorer.apothem.network/";
 
 export default function SubscribePage() {
@@ -110,7 +108,6 @@ export default function SubscribePage() {
 
     try {
       if (!SM_ADDRESS) throw new Error("Contract not configured");
-      if (!ARKA_KEY) throw new Error("Paymaster not configured");
 
       // Step 1: Connect
       setStep(1);
@@ -121,8 +118,8 @@ export default function SubscribePage() {
 
       // Step 2: Smart Account
       setStep(2);
-      const snapshot = await getSmartAccountSnapshot(privateKey, BUNDLER_URL);
-      setSmartAccount(snapshot.smartAccountAddress);
+      const snapshot = await getSmartAccountInfo(privateKey);
+      setSmartAccount(snapshot.address);
 
       // Step 3: Build + Paymaster
       setStep(3);
@@ -139,8 +136,6 @@ export default function SubscribePage() {
         planId: Number(planId),
         tokenAmount: selectedTier.tier.price,
         approvalAmount: selectedTier.tier.price,
-        bundlerUrl: BUNDLER_URL || undefined,
-        arkaApiKey: ARKA_KEY,
       });
 
       setUoHash(result.uoHash || "");
@@ -240,17 +235,13 @@ export default function SubscribePage() {
               </div>
             )}
 
-            {/* Native Balance — Testnet Fallback Awareness */}
+            {/* Native Balance — removed since AA is now fully working with custom paymaster */}
             {nativeBalance !== null && Number(nativeBalance) === 0 && (
-              <div className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs text-amber-800">
-                <p className="font-bold">⚠️ Testnet Fallback Notice</p>
+              <div className="rounded-xl border border-cyan-200 bg-cyan-50 p-3 text-xs text-cyan-800">
+                <p className="font-bold">ℹ️ Gasless Mode Active</p>
                 <p className="mt-1">
-                  Your wallet has 0 tXDC. The primary path uses Account Abstraction with Arka Paymaster 
-                  (gasless — you pay $0). If the testnet AA infrastructure is temporarily unavailable, the 
-                  fallback path needs a tiny amount of tXDC for gas. Get free tXDC from the{" "}
-                  <a href="https://faucet.apothem.network/" target="_blank" rel="noopener noreferrer" className="underline font-semibold">
-                    official Apothem faucet
-                  </a>.
+                  You have 0 tXDC, but that's fine! Our custom Verifying Paymaster sponsors all gas fees.
+                  You only need ERC20 tokens to subscribe.
                 </p>
               </div>
             )}
@@ -304,11 +295,7 @@ export default function SubscribePage() {
                 <p className="mt-1">{error}</p>
                 {error.includes("insufficient funds") && (
                   <p className="mt-2 text-slate-600">
-                    This is a testnet limitation — the AA infrastructure on XDC Apothem requires a tiny amount of gas for the fallback path.
-                    You can get free tXDC from{" "}
-                    <a href="https://faucet.apothem.network/" target="_blank" rel="noopener noreferrer" className="underline text-cyan-700">
-                      the official faucet
-                    </a>.
+                    The relay ran out of gas sponsorship budget. Please contact the developer.
                   </p>
                 )}
               </div>
