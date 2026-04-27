@@ -169,6 +169,7 @@ export async function sendSubscriptionAction(
         params.planId ?? 0,
         resolvedTokenAddress,
         resolvedTokenAmount,
+        params.mode === "multi-token" ? "sponsor" : params.mode,
       );
       break;
     case "renew":

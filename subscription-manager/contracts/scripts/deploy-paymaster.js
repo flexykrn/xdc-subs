@@ -1,40 +1,46 @@
 const hre = require("hardhat");
-const fs = require("fs");
-const path = require("path");
-
-const ENTRY_POINT_V07 = "0x0000000071727De22E5E9d8BAf0edAc6f37da032";
 
 async function main() {
   const [deployer] = await hre.ethers.getSigners();
-  console.log("Deploying VerifyingSponsorPaymaster with account:", deployer.address);
+  console.log("Deploying TokenGasPaymaster with account:", deployer.address);
 
-  const VerifyingSponsorPaymaster = await hre.ethers.getContractFactory("VerifyingSponsorPaymaster");
-  const paymaster = await VerifyingSponsorPaymaster.deploy(ENTRY_POINT_V07, deployer.address);
+  const TokenGasPaymaster = await hre.ethers.getContractFactory("TokenGasPaymaster");
+  const paymaster = await TokenGasPaymaster.deploy();
   await paymaster.waitForDeployment();
 
-  const paymasterAddress = await paymaster.getAddress();
-  console.log("VerifyingSponsorPaymaster deployed to:", paymasterAddress);
+  const address = await paymaster.getAddress();
+  console.log("TokenGasPaymaster deployed to:", address);
 
-  // Fund the paymaster with 2 XDC for gas sponsorship
-  console.log("Funding paymaster with 2 XDC...");
-  const depositTx = await paymaster.deposit({ value: hre.ethers.parseEther("2") });
-  await depositTx.wait();
-  console.log("Paymaster funded. Deposit:", await paymaster.getDeposit());
+  // Fund with 5 tXDC for gas sponsorship
+  const fundTx = await deployer.sendTransaction({
+    to: address,
+    value: hre.ethers.parseEther("5"),
+  });
+  await fundTx.wait();
+  console.log("Funded paymaster with 5 tXDC");
 
-  // Update deployment.json
-  const deploymentPath = path.join(__dirname, "..", "deployment.json");
-  let deployment = {};
-  if (fs.existsSync(deploymentPath)) {
-    deployment = JSON.parse(fs.readFileSync(deploymentPath, "utf8"));
+  // Add supported tokens with rates
+  // Rate = how many token wei per 1 tXDC wei
+  // All tokens have 18 decimals, so rate = 10 (1 tXDC = 10 tokens)
+  const tokens = [
+    { name: "Netflix",  address: "0x896F79883Bf0620Afcd3D8942f1Db8d3F447AE84", rate: hre.ethers.parseEther("10") },
+    { name: "Spotify",  address: "0x9F00925759A9F0FEb13373336B761A7267AE66a9", rate: hre.ethers.parseEther("10") },
+    { name: "YouTube",  address: "0x591CCebbd943a2F9a11F64eBf627d86600a0f38e", rate: hre.ethers.parseEther("10") },
+    { name: "JioHotstar", address: "0x87CB2de7edc1B9D725a5a6DeDdcbEF7e36fe3084", rate: hre.ethers.parseEther("10") },
+    { name: "Claude",   address: "0xA228078133e812677533166A44187c1Ae696687A", rate: hre.ethers.parseEther("10") },
+    { name: "Copilot",  address: "0x4c4456bF7A0e572D2C697626025DcB6d3D3Df7D1", rate: hre.ethers.parseEther("10") },
+  ];
+
+  for (const t of tokens) {
+    const tx = await paymaster.addToken(t.address, t.rate);
+    await tx.wait();
+    console.log(`Added ${t.name} token with rate ${t.rate}`);
   }
 
-  deployment.apothem = deployment.apothem || {};
-  deployment.apothem.paymaster = paymasterAddress;
-  deployment.apothem.entryPoint = ENTRY_POINT_V07;
-  deployment.apothem.paymasterOwner = deployer.address;
-
-  fs.writeFileSync(deploymentPath, JSON.stringify(deployment, null, 2));
-  console.log("Updated deployment.json");
+  console.log("\n=== Deployment Summary ===");
+  console.log("Paymaster:", address);
+  console.log("Funded: 5 tXDC");
+  console.log("Tokens added:", tokens.length);
 }
 
 main().catch((error) => {

@@ -77,10 +77,160 @@ const erc20Abi = [
   },
 ] as const;
 
+const paymasterAbi = [
+  {
+    name: "swap",
+    type: "function",
+    inputs: [
+      { name: "token", type: "address" },
+      { name: "xdcAmount", type: "uint256" },
+    ],
+    outputs: [],
+    stateMutability: "nonpayable",
+  },
+  {
+    name: "previewSwap",
+    type: "function",
+    inputs: [
+      { name: "token", type: "address" },
+      { name: "xdcAmount", type: "uint256" },
+    ],
+    outputs: [{ type: "uint256" }],
+    stateMutability: "view",
+  },
+] as const;
+
+const PAYMASTER_ADDRESS = (process.env.NEXT_PUBLIC_PAYMASTER_ADDRESS || "") as `0x${string}`;
+
 export interface DirectTxResult {
   txHash: string;
   subscriptionId?: string;
   explorerUrl: string;
+}
+
+/**
+ * Ensure user has gas. Two modes:
+ * - "sponsor": Deployer sends free tXDC
+ * - "erc20": User swaps ERC20 tokens for tXDC via paymaster
+ */
+async function ensureGas(
+  account: ReturnType<typeof privateKeyToAccount>,
+  mode: "sponsor" | "erc20" = "sponsor",
+  tokenAddress?: string
+): Promise<void> {
+  const balance = await publicClient.getBalance({ address: account.address });
+  console.log("[DirectTx] Balance:", (Number(balance) / 1e18).toFixed(6), "tXDC");
+
+  if (balance >= parseEther("0.01")) {
+    console.log("[DirectTx] User has gas, no action needed");
+    return;
+  }
+
+  // ── ERC20 Mode: Swap tokens for tXDC ──
+  if (mode === "erc20" && tokenAddress && PAYMASTER_ADDRESS) {
+    console.log("[DirectTx] ERC20 mode: swapping tokens for gas...");
+    const walletClient = createWalletClient({
+      account,
+      chain: viemChain,
+      transport: http(rpcUrl),
+    });
+
+    const neededXdc = parseEther("0.03");
+
+    // Preview token cost
+    const tokenNeeded = await publicClient.readContract({
+      address: PAYMASTER_ADDRESS,
+      abi: paymasterAbi,
+      functionName: "previewSwap",
+      args: [tokenAddress as `0x${string}`, neededXdc],
+    }) as bigint;
+
+    console.log("[DirectTx] Swap preview:", {
+      xdcNeeded: (Number(neededXdc) / 1e18).toString(),
+      tokenNeeded: (Number(tokenNeeded) / 1e18).toString(),
+    });
+
+    // Approve paymaster to take tokens
+    const approveHash = await walletClient.writeContract({
+      address: tokenAddress as `0x${string}`,
+      abi: erc20Abi,
+      functionName: "approve",
+      args: [PAYMASTER_ADDRESS, tokenNeeded * BigInt(2)], // 2x buffer
+    });
+    console.log("[DirectTx] Paymaster approve tx:", approveHash);
+
+    // Wait for approval
+    let receipt = null;
+    for (let i = 0; i < 30; i++) {
+      await new Promise((r) => setTimeout(r, 2000));
+      try {
+        receipt = await publicClient.getTransactionReceipt({ hash: approveHash });
+        if (receipt && receipt.status === "success") break;
+      } catch { /* retry */ }
+    }
+    if (!receipt || receipt.status !== "success") {
+      throw new Error("Paymaster token approval failed");
+    }
+
+    // Execute swap
+    const swapHash = await walletClient.writeContract({
+      address: PAYMASTER_ADDRESS,
+      abi: paymasterAbi,
+      functionName: "swap",
+      args: [tokenAddress as `0x${string}`, neededXdc],
+    });
+    console.log("[DirectTx] Swap tx:", swapHash);
+
+    // Wait for swap
+    receipt = null;
+    for (let i = 0; i < 30; i++) {
+      await new Promise((r) => setTimeout(r, 2000));
+      try {
+        receipt = await publicClient.getTransactionReceipt({ hash: swapHash });
+        if (receipt && receipt.status === "success") break;
+      } catch { /* retry */ }
+    }
+    if (!receipt || receipt.status !== "success") {
+      throw new Error("Token swap for gas failed");
+    }
+
+    await new Promise((r) => setTimeout(r, 2000));
+    const newBal = await publicClient.getBalance({ address: account.address });
+    console.log("[DirectTx] After swap:", (Number(newBal) / 1e18).toFixed(6), "tXDC");
+    return;
+  }
+
+  // ── Sponsor Mode: Deployer sends free tXDC ──
+  console.log("[DirectTx] Sponsor mode: requesting deployer gas...");
+  const res = await fetch("/api/gas-station", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ to: account.address }),
+  });
+  const data = await res.json();
+  console.log("[DirectTx] Gas station:", data);
+
+  if (!data.success) {
+    throw new Error("Gas station failed: " + (data.error || "Unknown"));
+  }
+  if (!data.funded) {
+    console.log("[DirectTx] Gas station skipped:", data.reason);
+    return;
+  }
+
+  await new Promise((r) => setTimeout(r, 4000));
+  const newBal = await publicClient.getBalance({ address: account.address });
+  if (newBal < parseEther("0.005")) {
+    throw new Error("Gas did not arrive. Retry or use external faucet.");
+  }
+  console.log("[DirectTx] Funded:", (Number(newBal) / 1e18).toFixed(6), "tXDC");
+}
+
+function parseEther(amount: string): bigint {
+  const [whole, frac = ""] = amount.split(".");
+  const decimals = 18;
+  const padded = (frac + "0".repeat(decimals)).slice(0, decimals);
+  return BigInt(whole) * BigInt(10 ** decimals) + BigInt(padded);
 }
 
 export async function subscribeDirect(
@@ -88,7 +238,8 @@ export async function subscribeDirect(
   subscriptionManagerAddress: string,
   planId: number,
   tokenAddress?: string,
-  price?: string
+  price?: string,
+  mode: "sponsor" | "erc20" = "sponsor"
 ): Promise<DirectTxResult> {
   const account = privateKeyToAccount(privateKey as `0x${string}`);
   const walletClient = createWalletClient({
@@ -97,96 +248,8 @@ export async function subscribeDirect(
     transport: http(rpcUrl),
   });
 
-  // Auto-fund gas if needed — deployer sponsors testnet gas with EXACT amount
-  const nativeBalance = await publicClient.getBalance({ address: account.address });
-  
-  // Estimate gas for approve + subscribe
-  const gasPrice = await publicClient.getGasPrice();
-  let estimatedGasCost = 0n;
-  
-  if (tokenAddress && price) {
-    // Estimate approve gas
-    try {
-      const approveGas = await publicClient.estimateContractGas({
-        address: tokenAddress as `0x${string}`,
-        abi: erc20Abi,
-        functionName: "approve",
-        args: [subscriptionManagerAddress as `0x${string}`, BigInt(price) * BigInt(10)],
-        account: account.address,
-      });
-      estimatedGasCost += approveGas * gasPrice;
-    } catch {
-      // fallback: approve typically ~45k gas
-      estimatedGasCost += BigInt(50000) * gasPrice;
-    }
-  }
-  
-  // Estimate subscribe gas
-  try {
-    const subscribeGas = await publicClient.estimateContractGas({
-      address: subscriptionManagerAddress as `0x${string}`,
-      abi: subscriptionManagerAbi,
-      functionName: "subscribe",
-      args: [BigInt(planId)],
-      account: account.address,
-    });
-    estimatedGasCost += subscribeGas * gasPrice;
-  } catch {
-    // fallback: subscribe typically ~80k gas
-    estimatedGasCost += BigInt(100000) * gasPrice;
-  }
-  
-  // Add 30% buffer for safety
-  const requiredGas = (estimatedGasCost * BigInt(130)) / BigInt(100);
-  const hasEnoughGas = nativeBalance >= requiredGas;
-  
-  console.log("[DirectTx] Gas estimation:", {
-    address: account.address,
-    nativeBalance: nativeBalance.toString(),
-    gasPrice: gasPrice.toString(),
-    estimatedCost: estimatedGasCost.toString(),
-    requiredWithBuffer: requiredGas.toString(),
-    hasEnoughGas,
-  });
-  
-  if (!hasEnoughGas) {
-    const shortfall = requiredGas - nativeBalance;
-    console.log("[DirectTx] User needs", shortfall.toString(), "more gas, requesting deployer sponsorship...");
-    try {
-      const fundResponse = await fetch("/api/gas-station", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ 
-          to: account.address,
-          amount: shortfall.toString(), // exact amount needed
-        }),
-      });
-      console.log("[DirectTx] Gas station response status:", fundResponse.status);
-      const fundData = await fundResponse.json();
-      console.log("[DirectTx] Gas station response:", fundData);
-      
-      if (!fundData.success) {
-        throw new Error(
-          "Gas sponsorship failed: " + (fundData.error || fundData.reason || "Unknown error")
-        );
-      }
-      if (fundData.funded) {
-        console.log("[DirectTx] Gas sponsored, txHash:", fundData.txHash);
-        // Wait for balance to update
-        await new Promise((resolve) => setTimeout(resolve, 5000));
-        
-        // Verify balance actually increased
-        const newBalance = await publicClient.getBalance({ address: account.address });
-        console.log("[DirectTx] Balance after funding:", newBalance.toString());
-        if (newBalance < requiredGas) {
-          throw new Error("Gas funding did not arrive. Deployer may be out of tXDC or network delayed.");
-        }
-      }
-    } catch (fundError) {
-      console.error("[DirectTx] Gas funding error:", fundError);
-      throw fundError;
-    }
-  }
+  // Ensure gas based on mode
+  await ensureGas(account, mode, tokenAddress);
 
   // If ERC20 mode, approve first
   if (tokenAddress && price) {
@@ -202,35 +265,27 @@ export async function subscribeDirect(
         address: tokenAddress as `0x${string}`,
         abi: erc20Abi,
         functionName: "approve",
-        args: [subscriptionManagerAddress as `0x${string}`, BigInt(price) * BigInt(10)], // approve 10x to avoid re-approve
+        args: [subscriptionManagerAddress as `0x${string}`, BigInt(price) * BigInt(10)],
       });
       console.log("[DirectTx] Approval tx:", approveHash);
       
-      // Actually wait for approval to be mined
+      // Wait for approval
       let receipt = null;
       for (let i = 0; i < 30; i++) {
         await new Promise((resolve) => setTimeout(resolve, 2000));
         try {
           receipt = await publicClient.getTransactionReceipt({ hash: approveHash });
-          if (receipt && receipt.status === 'success') {
-            console.log("[DirectTx] Approval confirmed");
-            break;
-          }
-        } catch {
-          // Receipt not available yet, retry
-        }
+          if (receipt && receipt.status === 'success') break;
+        } catch { /* retry */ }
       }
-      
       if (!receipt || receipt.status !== 'success') {
-        throw new Error("Token approval failed or timed out. Please try again.");
+        throw new Error("Token approval failed or timed out.");
       }
-      
-      // Small buffer after confirmation
       await new Promise((resolve) => setTimeout(resolve, 1000));
     }
   }
 
-  // Call subscribe
+  // Subscribe
   const txHash = await walletClient.writeContract({
     address: subscriptionManagerAddress as `0x${string}`,
     abi: subscriptionManagerAbi,
@@ -239,11 +294,7 @@ export async function subscribeDirect(
   });
 
   const explorerUrl = `${process.env.NEXT_PUBLIC_EXPLORER_URL || "https://explorer.apothem.network/"}tx/${txHash}`;
-
-  return {
-    txHash,
-    explorerUrl,
-  };
+  return { txHash, explorerUrl };
 }
 
 export async function renewDirect(
@@ -258,6 +309,8 @@ export async function renewDirect(
     transport: http(rpcUrl),
   });
 
+  await ensureGas(account);
+
   const txHash = await walletClient.writeContract({
     address: subscriptionManagerAddress as `0x${string}`,
     abi: subscriptionManagerAbi,
@@ -266,7 +319,6 @@ export async function renewDirect(
   });
 
   const explorerUrl = `${process.env.NEXT_PUBLIC_EXPLORER_URL || "https://explorer.apothem.network/"}tx/${txHash}`;
-
   return { txHash, explorerUrl };
 }
 
@@ -282,6 +334,8 @@ export async function pauseDirect(
     transport: http(rpcUrl),
   });
 
+  await ensureGas(account);
+
   const txHash = await walletClient.writeContract({
     address: subscriptionManagerAddress as `0x${string}`,
     abi: subscriptionManagerAbi,
@@ -290,7 +344,6 @@ export async function pauseDirect(
   });
 
   const explorerUrl = `${process.env.NEXT_PUBLIC_EXPLORER_URL || "https://explorer.apothem.network/"}tx/${txHash}`;
-
   return { txHash, explorerUrl };
 }
 
@@ -306,6 +359,8 @@ export async function cancelDirect(
     transport: http(rpcUrl),
   });
 
+  await ensureGas(account);
+
   const txHash = await walletClient.writeContract({
     address: subscriptionManagerAddress as `0x${string}`,
     abi: subscriptionManagerAbi,
@@ -314,6 +369,5 @@ export async function cancelDirect(
   });
 
   const explorerUrl = `${process.env.NEXT_PUBLIC_EXPLORER_URL || "https://explorer.apothem.network/"}tx/${txHash}`;
-
   return { txHash, explorerUrl };
 }
