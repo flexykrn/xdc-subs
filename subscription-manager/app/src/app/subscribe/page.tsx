@@ -10,6 +10,7 @@ import { sendSubscriptionAction } from "@/lib/subscription";
 import { appendTelemetryRow, appendTelemetryRowRemote } from "@/lib/telemetry";
 import { connectWeb3Auth, getProviderAccounts, getProviderPrivateKey } from "@/lib/web3auth";
 
+import { useAuth } from "@/components/AuthContext";
 import AuthGuard from "@/components/AuthGuard";
 import SuccessModal from "@/components/SuccessModal";
 
@@ -32,6 +33,8 @@ export default function SubscribePage() {
   const [showSuccess, setShowSuccess] = useState(false);
   const [step, setStep] = useState(0);
 
+  const { eoaAddress, isAuthenticated } = useAuth();
+
   const selectedService = useMemo(() => getServiceById(serviceId), [serviceId]);
   const selectedTier = useMemo(() => getTierByPlanId(Number(planId)), [planId]);
 
@@ -42,16 +45,11 @@ export default function SubscribePage() {
     setPlanId(params.get("planId") || "1");
   }, []);
 
-  // Check token balance when service/tier is selected
+  // Check token balance when service/tier is selected (uses auth context, no reconnect)
   useEffect(() => {
-    if (!selectedTier) return;
+    if (!selectedTier || !isAuthenticated || !eoaAddress) return;
     const checkBalance = async () => {
       try {
-        const provider = await connectWeb3Auth();
-        const accounts = await getProviderAccounts(provider);
-        if (!accounts[0]) return;
-        
-        // Check token balance
         const rpcUrl = process.env.NEXT_PUBLIC_APOTHEM_RPC_URL || "https://erpc.apothem.network";
         const response = await fetch(rpcUrl, {
           method: "POST",
@@ -60,7 +58,7 @@ export default function SubscribePage() {
             jsonrpc: "2.0",
             id: 1,
             method: "eth_call",
-            params: [{ to: selectedTier.service.tokenAddress, data: `0x70a08231000000000000000000000000${accounts[0].slice(2)}` }, "latest"]
+            params: [{ to: selectedTier.service.tokenAddress, data: `0x70a08231000000000000000000000000${eoaAddress.slice(2)}` }, "latest"]
           })
         });
         const data = await response.json();
@@ -73,7 +71,7 @@ export default function SubscribePage() {
       } catch { /* ignore */ }
     };
     checkBalance();
-  }, [selectedTier]);
+  }, [selectedTier, eoaAddress, isAuthenticated]);
 
   const handleSubscribe = async () => {
     if (!selectedTier) return;
