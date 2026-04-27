@@ -99,22 +99,43 @@ export async function subscribeDirect(
 
   // Auto-fund gas if needed — deployer sponsors testnet gas
   const nativeBalance = await publicClient.getBalance({ address: account.address });
-  if (nativeBalance === 0n) {
+  const hasNoGas = nativeBalance <= BigInt(0);
+  
+  console.log("[DirectTx] Native balance check:", {
+    address: account.address,
+    nativeBalance: nativeBalance.toString(),
+    hasNoGas,
+  });
+  
+  if (hasNoGas) {
     console.log("[DirectTx] User has 0 gas, requesting deployer sponsorship...");
-    const fundResponse = await fetch("/api/gas-station", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ to: account.address }),
-    });
-    const fundData = await fundResponse.json();
-    if (!fundData.success || !fundData.funded) {
-      throw new Error(
-        "Gas sponsorship failed: " + (fundData.error || fundData.reason || "Deployer may be out of tXDC")
-      );
+    try {
+      const fundResponse = await fetch("/api/gas-station", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ to: account.address }),
+      });
+      console.log("[DirectTx] Gas station response status:", fundResponse.status);
+      const fundData = await fundResponse.json();
+      console.log("[DirectTx] Gas station response:", fundData);
+      
+      if (!fundData.success) {
+        throw new Error(
+          "Gas sponsorship failed: " + (fundData.error || fundData.reason || "Unknown error")
+        );
+      }
+      if (!fundData.funded && fundData.reason) {
+        console.log("[DirectTx] Gas station skipped:", fundData.reason);
+      }
+      if (fundData.funded) {
+        console.log("[DirectTx] Gas sponsored, txHash:", fundData.txHash);
+        // Wait for balance to update
+        await new Promise((resolve) => setTimeout(resolve, 5000));
+      }
+    } catch (fundError) {
+      console.error("[DirectTx] Gas funding error:", fundError);
+      throw fundError;
     }
-    console.log("[DirectTx] Gas sponsored, txHash:", fundData.txHash);
-    // Wait a moment for balance to update
-    await new Promise((resolve) => setTimeout(resolve, 3000));
   }
 
   // If ERC20 mode, approve first
