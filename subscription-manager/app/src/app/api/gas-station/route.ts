@@ -57,13 +57,13 @@ export async function POST(request: Request) {
 
     // Check if recipient already has gas
     const recipientBalance = await publicClient.getBalance({ address: to as `0x${string}` });
-    if (recipientBalance >= parseEther("0.01")) {
+    if (recipientBalance >= parseEther("0.05")) {
       return NextResponse.json(
         { success: true, funded: false, reason: "Recipient already has sufficient gas" }
       );
     }
 
-    // Send 0.01 tXDC for gas
+    // Send 0.05 tXDC for gas (enough for approve + subscribe + buffer)
     const walletClient = createWalletClient({
       account: deployerAccount,
       chain: viemChain,
@@ -72,7 +72,7 @@ export async function POST(request: Request) {
 
     const txHash = await walletClient.sendTransaction({
       to: to as `0x${string}`,
-      value: parseEther("0.01"),
+      value: parseEther("0.05"),
     });
 
     // Wait for receipt
@@ -98,7 +98,7 @@ export async function POST(request: Request) {
       success: true,
       funded: true,
       txHash,
-      amount: "0.01",
+      amount: "0.05",
       recipient: to,
     });
   } catch (error) {

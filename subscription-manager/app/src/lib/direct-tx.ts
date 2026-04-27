@@ -131,6 +131,13 @@ export async function subscribeDirect(
         console.log("[DirectTx] Gas sponsored, txHash:", fundData.txHash);
         // Wait for balance to update
         await new Promise((resolve) => setTimeout(resolve, 5000));
+        
+        // Verify balance actually increased
+        const newBalance = await publicClient.getBalance({ address: account.address });
+        console.log("[DirectTx] Balance after funding:", newBalance.toString());
+        if (newBalance <= BigInt(0)) {
+          throw new Error("Gas funding did not arrive. Deployer may be out of tXDC or network delayed.");
+        }
       }
     } catch (fundError) {
       console.error("[DirectTx] Gas funding error:", fundError);
