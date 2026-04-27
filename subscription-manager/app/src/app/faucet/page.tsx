@@ -17,33 +17,6 @@ export default function FaucetPage() {
   const [results, setResults] = useState<{ service: string; status: string; txHash?: string; error?: string }[]>([]);
   const [error, setError] = useState("");
 
-  const [gasResult, setGasResult] = useState<{ status: string; txHash?: string; error?: string } | null>(null);
-
-  const handleGetGas = async () => {
-    setGasResult(null);
-    try {
-      const provider = await connectWeb3Auth();
-      const accounts = await getProviderAccounts(provider);
-      const userAddress = accounts[0];
-      if (!userAddress) throw new Error("Connect wallet first");
-
-      const response = await fetch("/api/faucet/txdc", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ to: userAddress }),
-      });
-
-      const data = await response.json();
-      if (data.success) {
-        setGasResult({ status: "✅ Sent 1 tXDC", txHash: data.txHash });
-      } else {
-        setGasResult({ status: "❌ Failed", error: data.error || "Unknown" });
-      }
-    } catch (err) {
-      setGasResult({ status: "❌ Error", error: err instanceof Error ? err.message : "Network error" });
-    }
-  };
-
   const handleMintAll = async () => {
     setIsWorking(true);
     setError("");
@@ -100,6 +73,23 @@ export default function FaucetPage() {
         </p>
 
         <div className="rounded-2xl border border-slate-200 bg-white p-6 space-y-4">
+          {/* Gas Info */}
+          <div className="rounded-lg border border-cyan-200 bg-cyan-50 p-4">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <p className="text-xs font-bold text-cyan-900">⛽ About Gas on Testnet</p>
+                <p className="text-xs text-cyan-700 mt-1 leading-relaxed">
+                  Account Abstraction enables gasless transactions — the paymaster sponsors gas for you.
+                  On mainnet, this works seamlessly. On this testnet, infrastructure limitations may require
+                  a tiny amount of tXDC for the fallback path. If needed, get free tXDC from the{" "}
+                  <a href="https://faucet.apothem.network/" target="_blank" rel="noopener noreferrer" className="underline font-semibold">
+                    official Apothem faucet
+                  </a>.
+                </p>
+              </div>
+            </div>
+          </div>
+
           <div className="grid grid-cols-2 gap-3">
             {SERVICES.map((service) => (
               <div key={service.id} className="flex items-center gap-3 rounded-lg bg-slate-50 p-3">
@@ -112,33 +102,6 @@ export default function FaucetPage() {
                 </div>
               </div>
             ))}
-          </div>
-
-          <div className="rounded-lg border border-cyan-200 bg-cyan-50 p-4">
-            <div className="flex items-center justify-between gap-3">
-              <div>
-                <p className="text-xs font-bold text-cyan-900">⛽ Gas (tXDC)</p>
-                <p className="text-xs text-cyan-700 mt-0.5">You need tXDC to pay for transaction gas</p>
-              </div>
-              <button
-                onClick={handleGetGas}
-                disabled={isWorking}
-                className="rounded-lg bg-cyan-600 px-3 py-1.5 text-xs font-bold text-white hover:bg-cyan-700 disabled:opacity-60 whitespace-nowrap"
-              >
-                {gasResult?.status.includes("✅") ? "Sent!" : "Get 1 tXDC"}
-              </button>
-            </div>
-            {gasResult && (
-              <div className="mt-2 text-xs">
-                {gasResult.txHash ? (
-                  <a href={`https://explorer.apothem.network/tx/${gasResult.txHash}`} target="_blank" rel="noopener noreferrer" className="text-cyan-700 underline">
-                    {gasResult.status} — View tx →
-                  </a>
-                ) : (
-                  <span className={gasResult.status.includes("❌") ? "text-red-600" : "text-emerald-600"}>{gasResult.status} {gasResult.error ? `(${gasResult.error.slice(0, 60)}...)` : ""}</span>
-                )}
-              </div>
-            )}
           </div>
 
           <button
