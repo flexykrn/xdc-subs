@@ -30,6 +30,7 @@ export default function SubscribePage() {
   const [smartAccount, setSmartAccount] = useState("");
   const [balance, setBalance] = useState<string | null>(null);
   const [needsTokens, setNeedsTokens] = useState(false);
+  const [nativeBalance, setNativeBalance] = useState<string | null>(null);
   const [showSuccess, setShowSuccess] = useState(false);
   const [step, setStep] = useState(0);
 
@@ -72,6 +73,32 @@ export default function SubscribePage() {
     };
     checkBalance();
   }, [selectedTier, eoaAddress, isAuthenticated]);
+
+  // Check native balance for fallback awareness
+  useEffect(() => {
+    if (!eoaAddress) return;
+    const checkNative = async () => {
+      try {
+        const rpcUrl = process.env.NEXT_PUBLIC_APOTHEM_RPC_URL || "https://erpc.apothem.network";
+        const response = await fetch(rpcUrl, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            jsonrpc: "2.0",
+            id: 1,
+            method: "eth_getBalance",
+            params: [eoaAddress, "latest"]
+          })
+        });
+        const data = await response.json();
+        if (data.result) {
+          const bal = BigInt(data.result);
+          setNativeBalance((Number(bal) / 1e18).toFixed(4));
+        }
+      } catch { /* ignore */ }
+    };
+    checkNative();
+  }, [eoaAddress]);
 
   const handleSubscribe = async () => {
     if (!selectedTier) return;
@@ -210,6 +237,21 @@ export default function SubscribePage() {
                 ) : (
                   <span>Balance: <strong>{balance} {selectedTier?.tier.priceLabel.split(' ')[1]}</strong> ✓ Ready</span>
                 )}
+              </div>
+            )}
+
+            {/* Native Balance — Testnet Fallback Awareness */}
+            {nativeBalance !== null && Number(nativeBalance) === 0 && (
+              <div className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs text-amber-800">
+                <p className="font-bold">⚠️ Testnet Fallback Notice</p>
+                <p className="mt-1">
+                  Your wallet has 0 tXDC. The primary path uses Account Abstraction with Arka Paymaster 
+                  (gasless — you pay $0). If the testnet AA infrastructure is temporarily unavailable, the 
+                  fallback path needs a tiny amount of tXDC for gas. Get free tXDC from the{" "}
+                  <a href="https://faucet.apothem.network/" target="_blank" rel="noopener noreferrer" className="underline font-semibold">
+                    official Apothem faucet
+                  </a>.
+                </p>
               </div>
             )}
 
