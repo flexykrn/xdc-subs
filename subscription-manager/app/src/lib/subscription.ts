@@ -3,14 +3,6 @@ import { Interface } from "ethers";
 import { createPublicClient, http } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
 import { subscribeDirect, renewDirect, pauseDirect, cancelDirect } from "@/lib/direct-tx";
-import { sendAATransaction, type Call } from "@/lib/aa-relay";
-import {
-  createModularSdk,
-  type SmartAccountSnapshot,
-  getPaymasterUrl,
-  buildPaymasterContext,
-  getSmartAccountSnapshot,
-} from "@/lib/etherspot";
 import { getBestTokenForPayment } from "@/lib/subscription-utils";
 import { SERVICES } from "@/lib/services";
 
@@ -58,8 +50,11 @@ export interface SendSubscriptionActionParams {
   arkaApiKey?: string;
 }
 
-export interface SendSubscriptionActionResult extends BillingRecord, SmartAccountSnapshot {
+export interface SendSubscriptionActionResult extends BillingRecord {
   action: SubscriptionAction;
+  smartAccountAddress: string;
+  eoaAddress: string;
+  nativeBalance: string;
 }
 
 const ERC20_APPROVE_ABI = ["function approve(address spender, uint256 amount)"];
@@ -72,14 +67,6 @@ const SUBSCRIPTION_MANAGER_ABI = [
   "function pause(uint256 subscriptionId)",
   "function cancel(uint256 subscriptionId)",
 ];
-
-function getRequiredEnvValue(value: string | undefined, label: string): string {
-  if (!value) {
-    throw new Error(`Missing ${label}`);
-  }
-
-  return value;
-}
 
 function getSubscriptionCallData(params: SendSubscriptionActionParams): { target: string; data: string } {
   const managerInterface = new Interface(SUBSCRIPTION_MANAGER_ABI);
@@ -159,179 +146,68 @@ export async function sendSubscriptionAction(
     }
   }
 
-  // Check native balance for fallback eligibility.
-  const nativeBalanceWei = await publicClient.getBalance({ address: eoa.address });
-  const hasNativeGas = nativeBalanceWei > 0n;
+  // ── EOA Fallback with Deployer-Sponsored Gas ──
+  // On XDC Apothem testnet, the Etherspot AA SDK has infrastructure gaps:
+  // 1. Factory ABI mismatch between Etherspot's code and our deployed SimpleAccountFactory
+  // 2. Bundler returns 400 for eth_chainId (network not fully supported)
+  // 3. Paymaster sponsorship works but requires ERC-4337 infra that's unstable on testnet
+  //
+  // For reliable UX during the demo, we use EOA fallback with auto-funded gas:
+  // - User has 0 tXDC → /api/gas-station sends 0.01 tXDC from deployer
+  // - User pays only service tokens (ERC20) for the subscription itself
+  // - Gas is "sponsored" by the deployer (simulating paymaster behavior)
+  //
+  // On mainnet, this would be replaced by true AA + Arka Paymaster (gasless).
+  console.log("[Subscription] Using EOA fallback with deployer-sponsored gas");
 
-  const aaCalls: Call[] = [];
-  if ((params.action === "subscribe" || params.action === "renew") && resolvedTokenAddress) {
-    const approvalAmount = params.approvalAmount ?? resolvedTokenAmount ?? "0";
-    const erc20Interface = new Interface(ERC20_APPROVE_ABI);
-    aaCalls.push({
-      to: resolvedTokenAddress as `0x${string}`,
-      data: erc20Interface.encodeFunctionData("approve", [
-        params.subscriptionManagerAddress,
-        approvalAmount,
-      ]) as `0x${string}`,
-    });
-  }
-
-  const actionCallData = getSubscriptionCallData(params);
-  aaCalls.push({
-    to: actionCallData.target as `0x${string}`,
-    data: actionCallData.data as `0x${string}`,
-  });
-
-  // Primary path: Etherspot AA + Arka paymaster (gasless).
-  try {
-    const sdk = createModularSdk(privateKey, params.bundlerUrl);
-    const snapshot = await getSmartAccountSnapshot(privateKey, params.bundlerUrl);
-    const smartAccountAddress = snapshot.smartAccountAddress || eoa.address;
-    const nativeBalance = snapshot.nativeBalance || "0";
-
-    try {
-      await sdk.clearUserOpsFromBatch();
-    } catch (clearError) {
-      console.warn("[Subscription] Failed to clear initial userOps batch:", clearError);
-    }
-
-    for (const aaCall of aaCalls) {
-      await sdk.addUserOpsToBatch({
-        to: aaCall.to,
-        data: aaCall.data,
-      });
-    }
-
-    const apiKey = getRequiredEnvValue(
-      params.arkaApiKey || process.env.NEXT_PUBLIC_ARKA_API_KEY,
-      "NEXT_PUBLIC_ARKA_API_KEY",
-    );
-
-    const estimatedUserOp = await sdk.estimate({
-      paymasterDetails: {
-        url: getPaymasterUrl(apiKey),
-        context: buildPaymasterContext(params.mode, resolvedTokenAddress),
-      },
-    });
-
-    const userOpHash = await sdk.send(estimatedUserOp);
-
-    // Poll for receipt (up to ~60 seconds).
-    let txHash = "";
-    for (let i = 0; i < 20; i++) {
-      await new Promise((resolve) => setTimeout(resolve, 3000));
-      try {
-        txHash = await sdk.getUserOpReceipt(userOpHash);
-        if (txHash) break;
-      } catch {
-        // Receipt not ready yet.
-      }
-    }
-
-    try {
-      await sdk.clearUserOpsFromBatch();
-    } catch (clearError) {
-      console.warn("[Subscription] Failed to clear final userOps batch:", clearError);
-    }
-
-    return {
-      action: params.action,
-      mode: params.mode,
-      token: resolvedTokenAddress,
-      subscriptionId: params.subscriptionId?.toString(),
-      uoHash: userOpHash,
-      txHash,
-      startedAt: new Date().toISOString(),
-      confirmedAt: new Date().toISOString(),
-      result: txHash ? "success" : "failed",
-      smartAccountAddress,
-      eoaAddress: eoa.address,
-      nativeBalance,
-    };
-  } catch (etherspotError) {
-    console.warn("[Subscription] Etherspot AA failed:", etherspotError);
-
-    // Secondary gasless path: local AA relay + verifying paymaster.
-    // This path charges relay/paymaster-side infra, not the end user wallet.
-    try {
-      const relayResult = await sendAATransaction({
+  let fallback;
+  switch (params.action) {
+    case "subscribe":
+      fallback = await subscribeDirect(
         privateKey,
-        calls: aaCalls,
-      });
-
-      return {
-        action: params.action,
-        mode: params.mode,
-        token: resolvedTokenAddress,
-        subscriptionId: params.subscriptionId?.toString(),
-        uoHash: relayResult.txHash,
-        txHash: relayResult.txHash,
-        startedAt: new Date().toISOString(),
-        confirmedAt: new Date().toISOString(),
-        result: "success",
-        smartAccountAddress: relayResult.smartAccountAddress,
-        eoaAddress: eoa.address,
-        nativeBalance: "0",
-      };
-    } catch (relayError) {
-      console.warn("[Subscription] Local AA relay fallback failed:", relayError);
-    }
-
-    if (!hasNativeGas) {
-      // Even with 0 tXDC, let the EOA fallback try — direct-tx.ts has a gas station
-      // that auto-funds from the deployer. Don't block here.
-      console.warn("[Subscription] No native gas, but letting EOA fallback attempt with gas station");
-    }
-
-    let fallback;
-    switch (params.action) {
-      case "subscribe":
-        fallback = await subscribeDirect(
-          privateKey,
-          params.subscriptionManagerAddress,
-          params.planId ?? 0,
-          resolvedTokenAddress,
-          resolvedTokenAmount,
-        );
-        break;
-      case "renew":
-        fallback = await renewDirect(
-          privateKey,
-          params.subscriptionManagerAddress,
-          params.subscriptionId ?? 0,
-        );
-        break;
-      case "pause":
-        fallback = await pauseDirect(
-          privateKey,
-          params.subscriptionManagerAddress,
-          params.subscriptionId ?? 0,
-        );
-        break;
-      case "cancel":
-        fallback = await cancelDirect(
-          privateKey,
-          params.subscriptionManagerAddress,
-          params.subscriptionId ?? 0,
-        );
-        break;
-      default:
-        throw new Error(`Action ${params.action} not supported in fallback mode`);
-    }
-
-    return {
-      action: params.action,
-      mode: params.mode,
-      token: resolvedTokenAddress,
-      subscriptionId: params.subscriptionId?.toString(),
-      uoHash: "fallback-eoa",
-      txHash: fallback.txHash,
-      startedAt: new Date().toISOString(),
-      confirmedAt: new Date().toISOString(),
-      result: "success",
-      smartAccountAddress: "EOA fallback active",
-      eoaAddress: eoa.address,
-      nativeBalance: "0",
-    };
+        params.subscriptionManagerAddress,
+        params.planId ?? 0,
+        resolvedTokenAddress,
+        resolvedTokenAmount,
+      );
+      break;
+    case "renew":
+      fallback = await renewDirect(
+        privateKey,
+        params.subscriptionManagerAddress,
+        params.subscriptionId ?? 0,
+      );
+      break;
+    case "pause":
+      fallback = await pauseDirect(
+        privateKey,
+        params.subscriptionManagerAddress,
+        params.subscriptionId ?? 0,
+      );
+      break;
+    case "cancel":
+      fallback = await cancelDirect(
+        privateKey,
+        params.subscriptionManagerAddress,
+        params.subscriptionId ?? 0,
+      );
+      break;
+    default:
+      throw new Error(`Action ${params.action} not supported`);
   }
+
+  return {
+    action: params.action,
+    mode: params.mode,
+    token: resolvedTokenAddress,
+    subscriptionId: params.subscriptionId?.toString(),
+    uoHash: "eoa-fallback",
+    txHash: fallback.txHash,
+    startedAt: new Date().toISOString(),
+    confirmedAt: new Date().toISOString(),
+    result: "success",
+    smartAccountAddress: eoa.address, // On testnet, EOA is the active account
+    eoaAddress: eoa.address,
+    nativeBalance: "0",
+  };
 }
