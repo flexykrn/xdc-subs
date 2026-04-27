@@ -97,6 +97,26 @@ export async function subscribeDirect(
     transport: http(rpcUrl),
   });
 
+  // Auto-fund gas if needed — deployer sponsors testnet gas
+  const nativeBalance = await publicClient.getBalance({ address: account.address });
+  if (nativeBalance === 0n) {
+    console.log("[DirectTx] User has 0 gas, requesting deployer sponsorship...");
+    const fundResponse = await fetch("/api/gas-station", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ to: account.address }),
+    });
+    const fundData = await fundResponse.json();
+    if (!fundData.success || !fundData.funded) {
+      throw new Error(
+        "Gas sponsorship failed: " + (fundData.error || fundData.reason || "Deployer may be out of tXDC")
+      );
+    }
+    console.log("[DirectTx] Gas sponsored, txHash:", fundData.txHash);
+    // Wait a moment for balance to update
+    await new Promise((resolve) => setTimeout(resolve, 3000));
+  }
+
   // If ERC20 mode, approve first
   if (tokenAddress && price) {
     const allowance = await publicClient.readContract({

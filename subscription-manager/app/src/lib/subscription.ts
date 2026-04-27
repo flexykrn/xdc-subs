@@ -3,6 +3,7 @@ import { Interface } from "ethers";
 import { createPublicClient, http } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
 import { subscribeDirect, renewDirect, pauseDirect, cancelDirect } from "@/lib/direct-tx";
+import { sendAATransaction, type Call } from "@/lib/aa-relay";
 import {
   createModularSdk,
   type SmartAccountSnapshot,
@@ -162,6 +163,25 @@ export async function sendSubscriptionAction(
   const nativeBalanceWei = await publicClient.getBalance({ address: eoa.address });
   const hasNativeGas = nativeBalanceWei > 0n;
 
+  const aaCalls: Call[] = [];
+  if ((params.action === "subscribe" || params.action === "renew") && resolvedTokenAddress) {
+    const approvalAmount = params.approvalAmount ?? resolvedTokenAmount ?? "0";
+    const erc20Interface = new Interface(ERC20_APPROVE_ABI);
+    aaCalls.push({
+      to: resolvedTokenAddress as `0x${string}`,
+      data: erc20Interface.encodeFunctionData("approve", [
+        params.subscriptionManagerAddress,
+        approvalAmount,
+      ]) as `0x${string}`,
+    });
+  }
+
+  const actionCallData = getSubscriptionCallData(params);
+  aaCalls.push({
+    to: actionCallData.target as `0x${string}`,
+    data: actionCallData.data as `0x${string}`,
+  });
+
   // Primary path: Etherspot AA + Arka paymaster (gasless).
   try {
     const sdk = createModularSdk(privateKey, params.bundlerUrl);
@@ -175,24 +195,12 @@ export async function sendSubscriptionAction(
       console.warn("[Subscription] Failed to clear initial userOps batch:", clearError);
     }
 
-    if ((params.action === "subscribe" || params.action === "renew") && resolvedTokenAddress) {
-      const approvalAmount = params.approvalAmount ?? resolvedTokenAmount ?? "0";
-      const erc20Interface = new Interface(ERC20_APPROVE_ABI);
-
+    for (const aaCall of aaCalls) {
       await sdk.addUserOpsToBatch({
-        to: resolvedTokenAddress,
-        data: erc20Interface.encodeFunctionData("approve", [
-          params.subscriptionManagerAddress,
-          approvalAmount,
-        ]),
+        to: aaCall.to,
+        data: aaCall.data,
       });
     }
-
-    const callData = getSubscriptionCallData(params);
-    await sdk.addUserOpsToBatch({
-      to: callData.target,
-      data: callData.data,
-    });
 
     const apiKey = getRequiredEnvValue(
       params.arkaApiKey || process.env.NEXT_PUBLIC_ARKA_API_KEY,
@@ -243,11 +251,37 @@ export async function sendSubscriptionAction(
   } catch (etherspotError) {
     console.warn("[Subscription] Etherspot AA failed:", etherspotError);
 
+    // Secondary gasless path: local AA relay + verifying paymaster.
+    // This path charges relay/paymaster-side infra, not the end user wallet.
+    try {
+      const relayResult = await sendAATransaction({
+        privateKey,
+        calls: aaCalls,
+      });
+
+      return {
+        action: params.action,
+        mode: params.mode,
+        token: resolvedTokenAddress,
+        subscriptionId: params.subscriptionId?.toString(),
+        uoHash: relayResult.txHash,
+        txHash: relayResult.txHash,
+        startedAt: new Date().toISOString(),
+        confirmedAt: new Date().toISOString(),
+        result: "success",
+        smartAccountAddress: relayResult.smartAccountAddress,
+        eoaAddress: eoa.address,
+        nativeBalance: "0",
+      };
+    } catch (relayError) {
+      console.warn("[Subscription] Local AA relay fallback failed:", relayError);
+    }
+
     if (!hasNativeGas) {
       throw new Error(
-        "Account Abstraction gas sponsorship is currently unavailable on XDC Apothem. " +
-        "Your wallet has 0 tXDC, so EOA fallback cannot execute right now. " +
-        "Please retry shortly, or fund a small amount of tXDC from https://faucet.apothem.network/ if urgent."
+        "Gasless infrastructure is unavailable right now (Etherspot and local relay both failed). " +
+        "Your wallet has 0 tXDC, so EOA fallback cannot execute. " +
+        "Please verify PAYMASTER_ADDRESS and deployer/relay private key envs, then retry."
       );
     }
 

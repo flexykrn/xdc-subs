@@ -5,7 +5,11 @@ import { privateKeyToAccount } from "viem/accounts";
 const rpcUrl = process.env.NEXT_PUBLIC_APOTHEM_RPC_URL || "https://erpc.apothem.network";
 const entryPointAddress = (process.env.ENTRYPOINT_ADDRESS || "0x0000000071727De22E5E9d8BAf0edAc6f37da032") as `0x${string}`;
 const paymasterAddress = (process.env.PAYMASTER_ADDRESS || "") as `0x${string}`;
-const paymasterPrivateKey = process.env.PAYMASTER_PRIVATE_KEY || "";
+const relayPrivateKey =
+  process.env.RELAYER_PRIVATE_KEY ||
+  process.env.DEPLOYER_PRIVATE_KEY ||
+  process.env.PAYMASTER_PRIVATE_KEY ||
+  "";
 const chainId = 51;
 
 const viemChain = {
@@ -81,9 +85,9 @@ interface PackedUserOperation {
 
 export async function POST(request: Request) {
   try {
-    if (!paymasterPrivateKey) {
+    if (!relayPrivateKey) {
       return NextResponse.json(
-        { success: false, error: "Relay not configured — missing paymaster key" },
+        { success: false, error: "Relay not configured — missing relayer/deployer key" },
         { status: 500 }
       );
     }
@@ -98,7 +102,7 @@ export async function POST(request: Request) {
       );
     }
 
-    const relayAccount = privateKeyToAccount(paymasterPrivateKey as `0x${string}`);
+    const relayAccount = privateKeyToAccount(relayPrivateKey as `0x${string}`);
 
     const walletClient = createWalletClient({
       account: relayAccount,

@@ -14,7 +14,11 @@ import { privateKeyToAccount } from "viem/accounts";
 
 const rpcUrl = process.env.NEXT_PUBLIC_APOTHEM_RPC_URL || "https://erpc.apothem.network";
 const paymasterAddress = (process.env.PAYMASTER_ADDRESS || "") as `0x${string}`;
-const paymasterPrivateKey = process.env.PAYMASTER_PRIVATE_KEY || "";
+const paymasterSignerKey =
+  process.env.PAYMASTER_OWNER_PRIVATE_KEY ||
+  process.env.DEPLOYER_PRIVATE_KEY ||
+  process.env.PAYMASTER_PRIVATE_KEY ||
+  "";
 const chainId = 51;
 
 const viemChain = {
@@ -69,9 +73,9 @@ function getPaymasterHash(userOp: PackedUserOperation): `0x${string}` {
 
 export async function POST(request: Request) {
   try {
-    if (!paymasterAddress || !paymasterPrivateKey) {
+    if (!paymasterAddress || !paymasterSignerKey) {
       return NextResponse.json(
-        { success: false, error: "Paymaster not configured" },
+        { success: false, error: "Paymaster not configured (missing address or signer key)" },
         { status: 500 }
       );
     }
@@ -90,7 +94,7 @@ export async function POST(request: Request) {
     const hash = getPaymasterHash(userOp);
 
     // Sign the hash with paymaster owner key
-    const ownerAccount = privateKeyToAccount(paymasterPrivateKey as `0x${string}`);
+    const ownerAccount = privateKeyToAccount(paymasterSignerKey as `0x${string}`);
     const signature = await ownerAccount.signMessage({
       message: { raw: hash },
     });

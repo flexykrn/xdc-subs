@@ -257,13 +257,13 @@ export default function SubscribePage() {
               </div>
             )}
 
-            {/* Native Balance — removed since AA is now fully working with custom paymaster */}
+            {/* Native Balance — Deployer-sponsored gas on testnet */}
             {nativeBalance !== null && Number(nativeBalance) === 0 && (
-              <div className="rounded-xl border border-cyan-200 bg-cyan-50 p-3 text-xs text-cyan-800">
-                <p className="font-bold">ℹ️ Gasless Mode Active</p>
+              <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-xs text-emerald-800">
+                <p className="font-bold">⛽ Gas Sponsored by Deployer</p>
                 <p className="mt-1">
-                  You have 0 tXDC, but that is fine. Arka Paymaster sponsors the gas fees.
-                  You only need ERC20 tokens to subscribe.
+                  Your wallet has 0 tXDC, but the deployer will automatically sponsor 
+                  the gas for this testnet transaction. You only pay with {selectedService?.name} tokens.
                 </p>
               </div>
             )}
@@ -328,9 +328,9 @@ export default function SubscribePage() {
               <div className="rounded-xl border border-red-200 bg-red-50 p-3 text-xs text-red-700">
                 <p className="font-bold">Transaction failed:</p>
                 <p className="mt-1">{error}</p>
-                {error.includes("insufficient funds") && (
+                {error.includes("sponsorship") && (
                   <p className="mt-2 text-slate-600">
-                    The relay ran out of gas sponsorship budget. Please contact the developer.
+                    The deployer gas sponsorship failed. The deployer may be out of tXDC.
                   </p>
                 )}
               </div>
