@@ -5,7 +5,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useAuth } from "./AuthContext";
 
-import { getSmartAccountAddress } from "@/lib/etherspot";
+import { getEtherspotPrime, getSmartAccountAddress } from "@/lib/etherspot";
 import {
   connectWeb3Auth,
   disconnectWeb3Auth,
@@ -43,7 +43,8 @@ export default function NavBar() {
       const provider = await connectWeb3Auth();
       const accounts = await getProviderAccounts(provider);
       const privateKey = await getProviderPrivateKey(provider);
-      const smartAccountAddress = await getSmartAccountAddress(privateKey);
+      const primeSdk = await getEtherspotPrime(provider);
+      const smartAccountAddress = await getSmartAccountAddress(primeSdk);
 
       // Update auth context
       const eoa = accounts[0] || "";

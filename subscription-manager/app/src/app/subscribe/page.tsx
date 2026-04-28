@@ -5,10 +5,10 @@ import Image from "next/image";
 import Link from "next/link";
 
 import { getServiceById, getTierByPlanId } from "@/lib/services";
-import { getSmartAccountAddress } from "@/lib/etherspot";
-import { sendSubscriptionAction } from "@/lib/subscription";
+import { getEtherspotPrime } from "@/lib/etherspot";
+import { executeAASubscription } from "@/lib/aa-subscription";
 import { appendTelemetryRow, appendTelemetryRowRemote } from "@/lib/telemetry";
-import { connectWeb3Auth, getProviderAccounts, getProviderPrivateKey } from "@/lib/web3auth";
+import { connectWeb3Auth, getProviderAccounts } from "@/lib/web3auth";
 
 import { useAuth } from "@/components/AuthContext";
 import AuthGuard from "@/components/AuthGuard";
@@ -131,46 +131,42 @@ export default function SubscribePage() {
       setStep(1);
       const provider = await connectWeb3Auth();
       const accounts = await getProviderAccounts(provider);
-      const privateKey = await getProviderPrivateKey(provider);
       const wallet = accounts[0] || "";
 
-      // Step 2: Smart Account
+      // Step 2-3: Create EtherspotPrime from Web3Auth provider and submit AA UserOp
       setStep(2);
-      const smartAccountAddress = await getSmartAccountAddress(privateKey);
+      const primeSdk = await getEtherspotPrime(provider);
+      const smartAccountAddress = await primeSdk.getCounterFactualAddress();
       setSmartAccount(smartAccountAddress);
 
-      // Step 3: Build + Paymaster
-      setStep(3);
-      await new Promise((r) => setTimeout(r, 800));
-      setStep(4);
-
-      // Step 5: Submit AA user operation
-      const result = await sendSubscriptionAction({
-        privateKey,
-        action: "subscribe",
+      const result = await executeAASubscription(
+        primeSdk,
+        SM_ADDRESS,
+        Number(planId),
         mode,
-        subscriptionManagerAddress: SM_ADDRESS,
-        tokenAddress: selectedTier.service.tokenAddress,
-        planId: Number(planId),
-        tokenAmount: selectedTier.tier.price,
-      });
+        selectedTier.service.tokenAddress,
+        selectedTier.tier.price,
+      );
 
-      setUoHash(result.uoHash || "");
-      setTxHash(result.txHash || "");
+      console.log("[Subscribe] userOpHash:", result.userOpHash);
+      console.log("[Subscribe] txHash:", result.txHash);
+
+      setUoHash(result.userOpHash);
+      setTxHash(result.txHash);
       setStep(5);
 
       // Telemetry
       const telemetryRow = {
-        action: result.action,
-        mode: result.mode,
+        action: "subscribe" as const,
+        mode,
         wallet,
-        token: result.token,
-        subscriptionId: result.subscriptionId,
-        uoHash: result.uoHash,
+        token: selectedTier.service.tokenAddress,
+        subscriptionId: planId,
+        uoHash: result.userOpHash,
         txHash: result.txHash,
-        startedAt: result.startedAt,
-        confirmedAt: result.confirmedAt,
-        result: result.result,
+        startedAt: new Date().toISOString(),
+        confirmedAt: new Date().toISOString(),
+        result: "success" as const,
       };
       appendTelemetryRow(telemetryRow);
       await appendTelemetryRowRemote(telemetryRow);
@@ -187,7 +183,7 @@ export default function SubscribePage() {
     }
   };
 
-  const stepLabels = ["", "Connecting wallet...", "Preparing smart account...", "Sponsoring gas...", "Submitting UserOp to bundler...", "Confirming on-chain...", "Complete!"];
+  const stepLabels = ["", "Connecting wallet...", "Preparing EtherspotPrime...", "Submitting UserOp to bundler...", "Confirming on-chain...", "Complete!"];
 
   return (
     <AuthGuard>
@@ -327,14 +323,14 @@ export default function SubscribePage() {
               </div>
             )}
 
-            {txHash && (
+            {uoHash && (
               <a
-                href={`${EXPLORER_URL.replace(/\/$/, "")}/tx/${txHash}`}
+                href={`${EXPLORER_URL.replace(/\/$/, "")}/op/${uoHash}`}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="block text-center text-xs text-cyan-700 underline"
               >
-                View transaction on explorer →
+                View UserOp on explorer →
               </a>
             )}
           </div>
