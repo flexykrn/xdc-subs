@@ -3,7 +3,7 @@ export const APOTHEM_CHAIN = {
   chainIdDecimal: 51,
   chainName: "XDC Apothem",
   rpcUrl: "https://erpc.apothem.network",
-  explorerUrl: "https://explorer.apothem.network/",
+  explorerUrl: "https://testnet.xdcscan.com/",
   nativeCurrency: {
     name: "XinFin",
     symbol: "XDC",
