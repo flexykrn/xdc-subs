@@ -1,8 +1,8 @@
-import { getPaymasterUrl, buildPaymasterContext, type GasMode } from "@/lib/etherspot";
+import { getArkaPaymasterUrl, buildPaymasterContext, type GasMode } from "@/lib/etherspot";
 
-export function getArkaPaymasterDetails(apiKey: string, mode: GasMode, tokenAddress?: string) {
+export function getArkaPaymasterDetails(mode: GasMode, tokenAddress?: string) {
   return {
-    url: getPaymasterUrl(apiKey),
+    url: getArkaPaymasterUrl(),
     context: buildPaymasterContext(mode, tokenAddress),
   };
 }

@@ -50,7 +50,7 @@ export default function SuccessModal({
 
         <div className="mt-6 space-y-3">
           <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
-            <p className="text-xs text-slate-500">Transaction Hash</p>
+            <p className="text-xs text-slate-500">AA Relay Tx Hash</p>
             <p className="mt-1 break-all font-mono text-xs text-slate-700">{txHash}</p>
             {txHash && (
               <a

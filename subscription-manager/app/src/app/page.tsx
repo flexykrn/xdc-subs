@@ -196,7 +196,7 @@ function HowItWorksSection() {
       icon: "⚡",
       title: "Smart Account",
       desc: "Etherspot spins up an ERC-7579 smart account. Your subscriptions live here, not in a basic wallet.",
-      detail: "Counterfactual address — deployed on first transaction. Batching enabled.",
+      detail: "Counterfactual address — deployed on first UserOp. Batching enabled.",
     },
     {
       icon: "🎯",

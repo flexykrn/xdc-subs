@@ -33,7 +33,7 @@ export default function RecentActivity({ activities }: RecentActivityProps) {
       <div className="rounded-2xl border border-slate-200 bg-white p-5">
         <h3 className="text-sm font-semibold text-slate-900">Recent Activity</h3>
         <div className="mt-4 flex items-center justify-center py-8">
-          <p className="text-sm text-slate-500">No activity yet. Subscribe to a plan to see your first transaction.</p>
+          <p className="text-sm text-slate-500">No activity yet. Subscribe to a plan to see your first UserOp.</p>
         </div>
       </div>
     );

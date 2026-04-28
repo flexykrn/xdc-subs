@@ -5,7 +5,7 @@ import Image from "next/image";
 import Link from "next/link";
 
 import { getTokenBalance, getTokenInfo, getNativeBalance } from "@/lib/blockchain";
-import { getSmartAccountSnapshot } from "@/lib/etherspot";
+import { getSmartAccountAddress } from "@/lib/etherspot";
 import {
   connectWeb3Auth,
   disconnectWeb3Auth,
@@ -147,15 +147,16 @@ export default function DashboardPage() {
       const provider = await connectWeb3Auth();
       const accounts = await getProviderAccounts(provider);
       const privateKey = await getProviderPrivateKey(provider);
-      const snapshot = await getSmartAccountSnapshot(privateKey, process.env.NEXT_PUBLIC_BUNDLER_URL);
+      const smartAccountAddress = await getSmartAccountAddress(privateKey);
+      const nativeBalance = await getNativeBalance(smartAccountAddress);
 
       const eoa = accounts[0];
       setEoaAddress(eoa);
-      setSmartAccountAddress(snapshot.smartAccountAddress);
+      setSmartAccountAddress(smartAccountAddress);
       setUser({
         eoaAddress: eoa,
-        smartAccountAddress: snapshot.smartAccountAddress,
-        nativeBalance: snapshot.nativeBalance,
+        smartAccountAddress: smartAccountAddress,
+        nativeBalance: nativeBalance,
       });
       login();
     } catch (err) {

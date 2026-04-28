@@ -5,7 +5,7 @@ import Image from "next/image";
 import Link from "next/link";
 
 import { getServiceById, getTierByPlanId } from "@/lib/services";
-import { getSmartAccountInfo } from "@/lib/aa-relay";
+import { getSmartAccountAddress } from "@/lib/etherspot";
 import { sendSubscriptionAction } from "@/lib/subscription";
 import { appendTelemetryRow, appendTelemetryRowRemote } from "@/lib/telemetry";
 import { connectWeb3Auth, getProviderAccounts, getProviderPrivateKey } from "@/lib/web3auth";
@@ -136,15 +136,15 @@ export default function SubscribePage() {
 
       // Step 2: Smart Account
       setStep(2);
-      const snapshot = await getSmartAccountInfo(privateKey);
-      setSmartAccount(snapshot.address);
+      const smartAccountAddress = await getSmartAccountAddress(privateKey);
+      setSmartAccount(smartAccountAddress);
 
       // Step 3: Build + Paymaster
       setStep(3);
       await new Promise((r) => setTimeout(r, 800));
       setStep(4);
 
-      // Step 5: Submit
+      // Step 5: Submit AA user operation
       const result = await sendSubscriptionAction({
         privateKey,
         action: "subscribe",
@@ -153,9 +153,6 @@ export default function SubscribePage() {
         tokenAddress: selectedTier.service.tokenAddress,
         planId: Number(planId),
         tokenAmount: selectedTier.tier.price,
-        approvalAmount: selectedTier.tier.price,
-        bundlerUrl: BUNDLER_URL || undefined,
-        arkaApiKey: ARKA_KEY,
       });
 
       setUoHash(result.uoHash || "");
@@ -181,7 +178,7 @@ export default function SubscribePage() {
       setStep(6);
       setShowSuccess(true);
     } catch (err) {
-      const msg = err instanceof Error ? err.message : "Transaction failed";
+      const msg = err instanceof Error ? err.message : "AA transaction failed";
       // Show REAL error message — don't hide it behind generic text
       setError(msg);
       setStep(0);
@@ -190,7 +187,7 @@ export default function SubscribePage() {
     }
   };
 
-  const stepLabels = ["", "Connecting wallet...", "Preparing smart account...", "Sponsoring gas...", "Submitting to bundler...", "Confirming on-chain...", "Complete!"];
+  const stepLabels = ["", "Connecting wallet...", "Preparing smart account...", "Sponsoring gas...", "Submitting UserOp to bundler...", "Confirming on-chain...", "Complete!"];
 
   return (
     <AuthGuard>
@@ -320,7 +317,7 @@ export default function SubscribePage() {
 
             {error && (
               <div className="rounded-xl border border-red-200 bg-red-50 p-3 text-xs text-red-700">
-                <p className="font-bold">Transaction failed:</p>
+                <p className="font-bold">AA transaction failed:</p>
                 <p className="mt-1">{error}</p>
                 {error.includes("sponsorship") && (
                   <p className="mt-2 text-slate-600">

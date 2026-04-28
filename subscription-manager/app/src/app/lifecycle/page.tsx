@@ -111,7 +111,6 @@ export default function LifecyclePage() {
             subscriptionId: row.subscriptionId,
             tokenAddress: row.planTokenAddress,
             tokenAmount: row.planPriceWei,
-            approvalAmount: row.planPriceWei,
           });
 
           const telemetryRow = {
