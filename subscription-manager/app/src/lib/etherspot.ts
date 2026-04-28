@@ -1,92 +1,314 @@
 import { APOTHEM_CHAIN } from "@/config/chains";
-import { ModularSdk, EtherspotBundler } from "@etherspot/modular-sdk";
+import { createPublicClient, createWalletClient, http, concat, toHex, keccak256, encodeFunctionData, parseAbi } from "viem";
+import { privateKeyToAccount } from "viem/accounts";
 
-const chainId = APOTHEM_CHAIN.chainIdDecimal;
-const bundlerUrl = process.env.NEXT_PUBLIC_BUNDLER_URL || "https://testnet-rpc.etherspot.io/v1/51";
-const arkaApiKey = process.env.NEXT_PUBLIC_ARKA_API_KEY || "";
+const rpcUrl = process.env.NEXT_PUBLIC_APOTHEM_RPC_URL || "https://erpc.apothem.network";
+const entryPointAddress = (process.env.NEXT_PUBLIC_ENTRYPOINT_ADDRESS || "0x0000000071727De22E5E9d8BAf0edAc6f37da032") as `0x${string}`;
+const factoryAddress = (process.env.NEXT_PUBLIC_SIMPLE_ACCOUNT_FACTORY_ADDRESS || "0x91E60e0613810449d098b0b5Ec8b51A0FE8c8985") as `0x${string}`;
+const paymasterAddress = (process.env.NEXT_PUBLIC_PAYMASTER_ADDRESS || "0x8361Fae5A25e71C2E1db35cDE13E7150bB7b1a42") as `0x${string}`;
+const chainId = 51;
 
-/**
- * Arka Paymaster URL — official Etherspot endpoint.
- * useVp=true tells Arka to use the deployed Verifying Paymaster.
- */
-export function getArkaPaymasterUrl(): string {
-  return `https://rpc.etherspot.io/paymaster?apiKey=${arkaApiKey}&chainId=${chainId}&useVp=true`;
-}
+const viemChain = {
+  id: chainId,
+  name: "XDC Apothem",
+  nativeCurrency: { name: "XDC", symbol: "XDC", decimals: 18 },
+  rpcUrls: { default: { http: [rpcUrl] }, public: { http: [rpcUrl] } },
+  testnet: true,
+} as const;
+
+const publicClient = createPublicClient({
+  chain: viemChain,
+  transport: http(rpcUrl),
+});
+
+// EntryPoint v0.7 ABI (minimal)
+const entryPointAbi = [
+  {
+    name: "getUserOpHash",
+    type: "function",
+    inputs: [
+      {
+        name: "userOp",
+        type: "tuple",
+        components: [
+          { name: "sender", type: "address" },
+          { name: "nonce", type: "uint256" },
+          { name: "initCode", type: "bytes" },
+          { name: "callData", type: "bytes" },
+          { name: "accountGasLimits", type: "bytes32" },
+          { name: "preVerificationGas", type: "uint256" },
+          { name: "gasFees", type: "bytes32" },
+          { name: "paymasterAndData", type: "bytes" },
+          { name: "signature", type: "bytes" },
+        ],
+      },
+    ],
+    outputs: [{ name: "", type: "bytes32" }],
+    stateMutability: "view",
+  },
+  {
+    name: "handleOps",
+    type: "function",
+    inputs: [
+      {
+        name: "ops",
+        type: "tuple[]",
+        components: [
+          { name: "sender", type: "address" },
+          { name: "nonce", type: "uint256" },
+          { name: "initCode", type: "bytes" },
+          { name: "callData", type: "bytes" },
+          { name: "accountGasLimits", type: "bytes32" },
+          { name: "preVerificationGas", type: "uint256" },
+          { name: "gasFees", type: "bytes32" },
+          { name: "paymasterAndData", type: "bytes" },
+          { name: "signature", type: "bytes" },
+        ],
+      },
+      { name: "beneficiary", type: "address" },
+    ],
+    outputs: [],
+    stateMutability: "payable",
+  },
+  {
+    name: "getNonce",
+    type: "function",
+    inputs: [
+      { name: "sender", type: "address" },
+      { name: "key", type: "uint192" },
+    ],
+    outputs: [{ name: "", type: "uint256" }],
+    stateMutability: "view",
+  },
+] as const;
+
+// SimpleAccountFactory ABI
+const factoryAbi = parseAbi([
+  "function createAccount(address owner, uint256 salt) returns (address account)",
+  "function getAddress(address owner, uint256 salt) view returns (address)",
+]);
+
+// SimpleAccount ABI
+const accountAbi = parseAbi([
+  "function execute(address dest, uint256 value, bytes func)",
+  "function getNonce() view returns (uint256)",
+]);
+
+// SubscriptionManager ABI
+const managerAbi = parseAbi([
+  "function subscribe(uint256 planId) returns (uint256 subscriptionId)",
+  "function renew(uint256 subscriptionId)",
+  "function pause(uint256 subscriptionId)",
+  "function cancel(uint256 subscriptionId)",
+]);
+
+// ERC20 ABI
+const erc20Abi = parseAbi([
+  "function approve(address spender, uint256 amount) returns (bool)",
+]);
 
 export type GasMode = "sponsor" | "erc20" | "multi-token";
 
-export interface PaymasterContext {
-  mode: string;
-  token?: string;
-  validAfter?: number;
-  validUntil?: number;
+interface PackedUserOperation {
+  sender: `0x${string}`;
+  nonce: bigint;
+  initCode: `0x${string}`;
+  callData: `0x${string}`;
+  accountGasLimits: `0x${string}`;
+  preVerificationGas: bigint;
+  gasFees: `0x${string}`;
+  paymasterAndData: `0x${string}`;
+  signature: `0x${string}`;
 }
 
-function createSdk(privateKey: string): ModularSdk {
-  const url = new URL(bundlerUrl);
-  const apiKey = url.searchParams.get("api-key") || undefined;
-  const baseUrl = `${url.protocol}//${url.host}${url.pathname}`;
+// ── Smart Account ──
 
-  const bundlerProvider = new EtherspotBundler(chainId, apiKey, baseUrl);
+export async function getSmartAccountAddress(ownerAddress: string): Promise<`0x${string}`> {
+  return await publicClient.readContract({
+    address: factoryAddress,
+    abi: factoryAbi,
+    functionName: "getAddress",
+    args: [ownerAddress as `0x${string}`, 0n],
+  }) as `0x${string}`;
+}
 
-  return new ModularSdk(privateKey, {
-    chainId,
-    bundlerProvider,
-    entryPointAddress: process.env.NEXT_PUBLIC_ENTRYPOINT_ADDRESS || "0x0000000071727De22E5E9d8BAf0edAc6f37da032",
-    walletFactoryAddress: process.env.NEXT_PUBLIC_SIMPLE_ACCOUNT_FACTORY_ADDRESS || "0x91E60e0613810449d098b0b5Ec8b51A0FE8c8985",
+async function isAccountDeployed(address: `0x${string}`): Promise<boolean> {
+  const code = await publicClient.getBytecode({ address });
+  return code !== undefined && code !== "0x";
+}
+
+async function getNonce(smartAccountAddress: `0x${string}`): Promise<bigint> {
+  const deployed = await isAccountDeployed(smartAccountAddress);
+  if (!deployed) return 0n;
+  return await publicClient.readContract({
+    address: smartAccountAddress,
+    abi: accountAbi,
+    functionName: "getNonce",
+  }) as bigint;
+}
+
+// ── UserOp Building ──
+
+function packGasLimits(verificationGasLimit: bigint, callGasLimit: bigint): `0x${string}` {
+  return concat([toHex(verificationGasLimit, { size: 16 }), toHex(callGasLimit, { size: 16 })]) as `0x${string}`;
+}
+
+function packGasFees(maxPriorityFeePerGas: bigint, maxFeePerGas: bigint): `0x${string}` {
+  return concat([toHex(maxPriorityFeePerGas, { size: 16 }), toHex(maxFeePerGas, { size: 16 })]) as `0x${string}`;
+}
+
+function buildInitCode(ownerAddress: `0x${string}`): `0x${string}` {
+  const callData = encodeFunctionData({
+    abi: factoryAbi,
+    functionName: "createAccount",
+    args: [ownerAddress, 0n],
+  });
+  return concat([factoryAddress, callData]);
+}
+
+function buildAccountCallData(
+  target: `0x${string}`,
+  value: bigint,
+  data: `0x${string}`
+): `0x${string}` {
+  return encodeFunctionData({
+    abi: accountAbi,
+    functionName: "execute",
+    args: [target, value, data],
   });
 }
 
-/**
- * Build paymaster context following Arka docs exactly.
- * https://etherspot.fyi/arka/intro
- */
-export function buildPaymasterContext(
-  mode: GasMode,
-  tokenAddress?: string
-): PaymasterContext {
-  const now = Date.now();
+// ── Paymaster ──
 
-  if (mode === "sponsor") {
-    return {
-      mode: "sponsor",
-      validAfter: now,
-      validUntil: now + 6000000, // 100 mins expiry per Arka docs
-    };
-  }
-
-  if (mode === "erc20" || mode === "multi-token") {
-    if (!tokenAddress) {
-      throw new Error("tokenAddress is required for ERC20 / multi-token mode");
-    }
-    return {
-      mode: "commonerc20",
-      token: tokenAddress,
-    };
-  }
-
-  return { mode: "sponsor" };
+async function getPaymasterSignature(userOp: PackedUserOperation): Promise<`0x${string}`> {
+  const res = await fetch("/api/aa/paymaster-sign", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ userOp }),
+  });
+  const data = await res.json();
+  if (!data.success) throw new Error("Paymaster sign failed: " + (data.error || "Unknown"));
+  return data.paymasterAndData as `0x${string}`;
 }
 
-/**
- * Get smart account address for an EOA.
- */
-export async function getSmartAccountAddress(privateKey: string): Promise<string> {
-  const sdk = createSdk(privateKey);
-  return sdk.getCounterFactualAddress();
+// ── Sign & Send ──
+
+async function signUserOp(
+  userOp: PackedUserOperation,
+  ownerPrivateKey: string
+): Promise<PackedUserOperation> {
+  const hash = await publicClient.readContract({
+    address: entryPointAddress,
+    abi: entryPointAbi,
+    functionName: "getUserOpHash",
+    args: [{
+      sender: userOp.sender,
+      nonce: userOp.nonce,
+      initCode: userOp.initCode,
+      callData: userOp.callData,
+      accountGasLimits: userOp.accountGasLimits,
+      preVerificationGas: userOp.preVerificationGas,
+      gasFees: userOp.gasFees,
+      paymasterAndData: userOp.paymasterAndData,
+      signature: userOp.signature,
+    }],
+  }) as `0x${string}`;
+
+  console.log("[AA] UserOp hash:", hash);
+
+  const account = privateKeyToAccount(ownerPrivateKey as `0x${string}`);
+  const signature = await account.signMessage({ message: { raw: hash } });
+
+  return { ...userOp, signature };
 }
 
-/**
- * Subscribe via real Account Abstraction (Etherspot + Arka).
- *
- * Flow per Arka docs:
- * 1. sdk.clearUserOpsFromBatch()
- * 2. sdk.addUserOpsToBatch({ to, data }) — encode subscribe call
- * 3. For ERC20: also add approve call to batch
- * 4. sdk.estimate({ paymasterDetails: { url, context } })
- * 5. sdk.send(op)
- * 6. sdk.getUserOpReceipt(uoHash) — poll
- */
+async function submitUserOp(userOp: PackedUserOperation): Promise<string> {
+  const res = await fetch("/api/aa/relay", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ userOp }),
+  });
+  const data = await res.json();
+  if (!data.success) throw new Error("Relay failed: " + (data.error || data.details || "Unknown"));
+  console.log("[AA] Relay txHash:", data.txHash);
+  return data.txHash;
+}
+
+// ── Main AA Action ──
+
+async function buildAndSendUserOp(
+  ownerPrivateKey: string,
+  ownerAddress: string,
+  calls: { target: `0x${string}`; value: bigint; data: `0x${string}` }[],
+  mode: GasMode
+): Promise<{ txHash: string; userOpHash: string; explorerUrl: string }> {
+  const smartAccountAddress = await getSmartAccountAddress(ownerAddress);
+  console.log("[AA] Smart account:", smartAccountAddress);
+
+  const deployed = await isAccountDeployed(smartAccountAddress);
+  const nonce = await getNonce(smartAccountAddress);
+
+  // Build batched callData (SimpleAccount.execute for each call)
+  // For multiple calls, we need to use executeBatch or multiple UserOps
+  // For simplicity, single execute per UserOp
+  const call = calls[0];
+  const callData = buildAccountCallData(call.target, call.value, call.data);
+
+  const verificationGasLimit = 150000n;
+  const callGasLimit = 300000n;
+  const maxPriorityFeePerGas = 1000000000n; // 1 gwei
+  const maxFeePerGas = 25000000000n; // 25 gwei
+  const preVerificationGas = 70000n;
+
+  let userOp: PackedUserOperation = {
+    sender: smartAccountAddress,
+    nonce,
+    initCode: deployed ? "0x" : buildInitCode(ownerAddress as `0x${string}`),
+    callData,
+    accountGasLimits: packGasLimits(verificationGasLimit, callGasLimit),
+    preVerificationGas,
+    gasFees: packGasFees(maxPriorityFeePerGas, maxFeePerGas),
+    paymasterAndData: "0x",
+    signature: "0x",
+  };
+
+  // Get paymaster signature for sponsor mode
+  if (mode === "sponsor" || mode === "multi-token") {
+    console.log("[AA] Getting paymaster signature...");
+    userOp.paymasterAndData = await getPaymasterSignature(userOp);
+  }
+
+  // Sign UserOp
+  console.log("[AA] Signing UserOp...");
+  userOp = await signUserOp(userOp, ownerPrivateKey);
+
+  // Submit
+  console.log("[AA] Submitting to EntryPoint...");
+  const txHash = await submitUserOp(userOp);
+
+  const userOpHash = await publicClient.readContract({
+    address: entryPointAddress,
+    abi: entryPointAbi,
+    functionName: "getUserOpHash",
+    args: [{
+      sender: userOp.sender,
+      nonce: userOp.nonce,
+      initCode: userOp.initCode,
+      callData: userOp.callData,
+      accountGasLimits: userOp.accountGasLimits,
+      preVerificationGas: userOp.preVerificationGas,
+      gasFees: userOp.gasFees,
+      paymasterAndData: userOp.paymasterAndData,
+      signature: userOp.signature,
+    }],
+  }) as `0x${string}`;
+
+  const explorerUrl = `${APOTHEM_CHAIN.explorerUrl}tx/${txHash}`;
+  return { txHash, userOpHash, explorerUrl };
+}
+
+// ── Public API ──
+
 export async function sendSubscriptionUserOp(
   privateKey: string,
   subscriptionManagerAddress: string,
@@ -95,87 +317,41 @@ export async function sendSubscriptionUserOp(
   tokenAddress?: string,
   price?: string
 ): Promise<{ txHash: string; explorerUrl: string; userOpHash: string }> {
-  const sdk = createSdk(privateKey);
-  const paymasterUrl = getArkaPaymasterUrl();
-  const context = buildPaymasterContext(mode, tokenAddress);
+  const owner = privateKeyToAccount(privateKey as `0x${string}`);
 
-  console.log("[Arka] Mode:", mode, "Context:", context);
-  console.log("[Arka] Paymaster URL:", paymasterUrl);
+  const calls: { target: `0x${string}`; value: bigint; data: `0x${string}` }[] = [];
 
-  // 1. Clear batch
-  await sdk.clearUserOpsFromBatch();
-
-  // 2. For ERC20: approve paymaster to spend tokens (add to batch first)
+  // If ERC20, approve first
   if ((mode === "erc20" || mode === "multi-token") && tokenAddress && price) {
-    // Fetch the ERC20 paymaster address for this token from Arka
-    const paymasterListRes = await fetch(
-      `https://rpc.etherspot.io/paymaster/getAllCommonERC20PaymasterAddress?apiKey=${arkaApiKey}&chainId=${chainId}`,
-      {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ params: [process.env.NEXT_PUBLIC_ENTRYPOINT_ADDRESS || "0x0000000071727De22E5E9d8BAf0edAc6f37da032"] }),
-      }
-    );
-
-    let erc20PaymasterAddress: string | null = null;
-    if (paymasterListRes.ok) {
-      const pmData = await paymasterListRes.json();
-      const list = pmData.message ? JSON.parse(pmData.message) : [];
-      const match = list.find(
-        (item: any) =>
-          item.chainId === chainId &&
-          item.gasToken.toLowerCase() === tokenAddress.toLowerCase()
-      );
-      if (match) erc20PaymasterAddress = match.paymasterAddress;
-    }
-
-    // Fallback: if Arka doesn't list our custom token, we can't do ERC20 via Arka
-    // In that case, fall back to sponsor mode with a clear log
-    if (!erc20PaymasterAddress) {
-      console.warn("[Arka] Token not supported by Arka ERC20 paymaster. Falling back to sponsor mode.");
-      context.mode = "sponsor";
-    } else {
-      // Approve the ERC20 paymaster to spend tokens
-      const approveData = encodeErc20Approve(tokenAddress, erc20PaymasterAddress, price);
-      await sdk.addUserOpsToBatch({ to: tokenAddress, data: approveData });
-      console.log("[Arka] Added approve to batch for paymaster:", erc20PaymasterAddress);
-    }
+    const approveData = encodeFunctionData({
+      abi: erc20Abi,
+      functionName: "approve",
+      args: [subscriptionManagerAddress as `0x${string}`, BigInt(price) * BigInt(10)],
+    });
+    calls.push({ target: tokenAddress as `0x${string}`, value: 0n, data: approveData });
   }
 
-  // 3. Add subscribe transaction to batch
-  const subscribeData = encodeSubscribe(subscriptionManagerAddress, planId);
-  await sdk.addUserOpsToBatch({ to: subscriptionManagerAddress, data: subscribeData });
-  console.log("[Arka] Added subscribe to batch");
-
-  // 4. Estimate with paymaster
-  console.log("[Arka] Estimating UserOp...");
-  const userOp = await sdk.estimate({
-    paymasterDetails: {
-      url: paymasterUrl,
-      context,
-    },
+  // Subscribe call
+  const subscribeData = encodeFunctionData({
+    abi: managerAbi,
+    functionName: "subscribe",
+    args: [BigInt(planId)],
   });
-  console.log("[Arka] Estimated UserOp:", userOp);
+  calls.push({ target: subscriptionManagerAddress as `0x${string}`, value: 0n, data: subscribeData });
 
-  // 5. Send to bundler
-  console.log("[Arka] Sending UserOp to bundler...");
-  const userOpHash = await sdk.send(userOp);
-  console.log("[Arka] UserOpHash:", userOpHash);
+  // For multiple calls, we need a batch execute. SimpleAccount has executeBatch?
+  // For now, if ERC20, we do approve as a separate UserOp first, then subscribe
+  if (calls.length === 2) {
+    // Send approve UserOp first
+    console.log("[AA] Sending approve UserOp first...");
+    await buildAndSendUserOp(privateKey, owner.address, [calls[0]], mode);
+    // Then send subscribe UserOp
+    return await buildAndSendUserOp(privateKey, owner.address, [calls[1]], mode);
+  }
 
-  // 6. Poll for receipt
-  console.log("[Arka] Waiting for receipt...");
-  const receipt = await pollForReceipt(sdk, userOpHash);
-  console.log("[Arka] Receipt:", receipt);
-
-  const txHash = receipt || userOpHash;
-  const explorerUrl = `${APOTHEM_CHAIN.explorerUrl}tx/${txHash}`;
-
-  return { txHash, explorerUrl, userOpHash };
+  return await buildAndSendUserOp(privateKey, owner.address, calls, mode);
 }
 
-/**
- * Renew / Pause / Cancel via AA.
- */
 export async function sendLifecycleUserOp(
   privateKey: string,
   subscriptionManagerAddress: string,
@@ -183,74 +359,15 @@ export async function sendLifecycleUserOp(
   action: "renew" | "pause" | "cancel",
   mode: GasMode = "sponsor"
 ): Promise<{ txHash: string; explorerUrl: string; userOpHash: string }> {
-  const sdk = createSdk(privateKey);
-  const paymasterUrl = getArkaPaymasterUrl();
-  const context = buildPaymasterContext(mode);
+  const owner = privateKeyToAccount(privateKey as `0x${string}`);
 
-  await sdk.clearUserOpsFromBatch();
-
-  const data = encodeLifecycleAction(subscriptionManagerAddress, action, subscriptionId);
-  await sdk.addUserOpsToBatch({ to: subscriptionManagerAddress, data });
-
-  const userOp = await sdk.estimate({
-    paymasterDetails: { url: paymasterUrl, context },
+  const data = encodeFunctionData({
+    abi: managerAbi,
+    functionName: action,
+    args: [BigInt(subscriptionId)],
   });
 
-  const userOpHash = await sdk.send(userOp);
-  const receipt = await pollForReceipt(sdk, userOpHash);
-
-  const txHash = receipt || userOpHash;
-  const explorerUrl = `${APOTHEM_CHAIN.explorerUrl}tx/${txHash}`;
-
-  return { txHash, explorerUrl, userOpHash };
-}
-
-// ── Helpers ──
-
-async function pollForReceipt(sdk: ModularSdk, userOpHash: string, timeoutMs = 120000): Promise<string | null> {
-  const deadline = Date.now() + timeoutMs;
-  while (Date.now() < deadline) {
-    await sleep(2000);
-    try {
-      const receipt = await sdk.getUserOpReceipt(userOpHash);
-      if (receipt) return receipt;
-    } catch {
-      // retry
-    }
-  }
-  return null;
-}
-
-function sleep(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
-}
-
-function encodeSubscribe(subscriptionManagerAddress: string, planId: number): string {
-  // subscribe(uint256 planId) selector = 0x9b3d47b4
-  const selector = "0x9b3d47b4";
-  const paddedPlanId = planId.toString(16).padStart(64, "0");
-  return selector + paddedPlanId;
-}
-
-function encodeErc20Approve(tokenAddress: string, spender: string, amount: string): string {
-  // approve(address spender, uint256 amount) selector = 0x095ea7b3
-  const selector = "0x095ea7b3";
-  const paddedSpender = spender.slice(2).padStart(64, "0");
-  const approveAmount = (BigInt(amount) * BigInt(10)).toString(16).padStart(64, "0");
-  return selector + paddedSpender + approveAmount;
-}
-
-function encodeLifecycleAction(
-  subscriptionManagerAddress: string,
-  action: "renew" | "pause" | "cancel",
-  subscriptionId: number
-): string {
-  const selectors: Record<string, string> = {
-    renew: "0x4f1b6eac",   // renew(uint256)
-    pause: "0x02329a41",   // pause(uint256)
-    cancel: "0x1e9a6950",  // cancel(uint256)
-  };
-  const selector = selectors[action];
-  const paddedId = subscriptionId.toString(16).padStart(64, "0");
-  return selector + paddedId;
+  return await buildAndSendUserOp(privateKey, owner.address, [
+    { target: subscriptionManagerAddress as `0x${string}`, value: 0n, data },
+  ], mode);
 }
