@@ -12,12 +12,14 @@ function getArkaUrl(): string {
 export type GasMode = "sponsor" | "erc20" | "multi-token";
 
 export async function getEtherspotPrime(web3Provider: any): Promise<PrimeSdk> {
+  const bundlerUrl = process.env.NEXT_PUBLIC_BUNDLER_URL || "https://testnet-rpc.etherspot.io/v1/51?api-key=etherspot_AA2QUX5f6tqxLEA8hC7XQu";
+  const url = new URL(bundlerUrl);
+  const apiKey = url.searchParams.get("api-key") || undefined;
+  const baseUrl = `${url.protocol}//${url.host}${url.pathname}`;
+
   const primeSdk = new PrimeSdk(web3Provider, {
     chainId,
-    bundlerProvider: new EtherspotBundler(
-      chainId,
-      "https://testnet-rpc.etherspot.io/v1/51",
-    ),
+    bundlerProvider: new EtherspotBundler(chainId, apiKey, baseUrl),
   });
   return primeSdk;
 }

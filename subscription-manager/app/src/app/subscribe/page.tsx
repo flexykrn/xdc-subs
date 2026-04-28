@@ -261,7 +261,27 @@ export default function SubscribePage() {
 
             {/* Payment Mode */}
             <div className="rounded-2xl border border-slate-200 bg-white p-5">
-              <p className="text-xs font-medium text-slate-400 uppercase tracking-wider mb-3">Payment</p>
+              <div className="flex items-center justify-between mb-3">
+                <p className="text-xs font-medium text-slate-400 uppercase tracking-wider">Payment</p>
+              </div>
+              
+              {/* Mode selector buttons */}
+              <div className="flex gap-2 mb-3">
+                {(["sponsor", "erc20", "multi-token"] as const).map((m) => (
+                  <button
+                    key={m}
+                    onClick={() => setMode(m)}
+                    disabled={isWorking}
+                    className={`flex-1 rounded-lg border px-3 py-2 text-xs font-bold transition ${
+                      mode === m
+                        ? "border-cyan-300 bg-cyan-50 text-cyan-700"
+                        : "border-slate-200 bg-white text-slate-600 hover:bg-slate-50"
+                    }`}
+                  >
+                    {m === "sponsor" ? "🎁 Gasless" : m === "erc20" ? "💰 ERC20 Gas" : "⚡ Best Route"}
+                  </button>
+                ))}
+              </div>
               
               {mode === "sponsor" && (
                 <div className="flex items-center gap-2 text-xs text-emerald-700 bg-emerald-50 rounded-lg p-3">
@@ -277,7 +297,7 @@ export default function SubscribePage() {
                   <span className="text-lg">💰</span>
                   <span>
                     <strong>ERC20 Gas Mode</strong> — Pay gas using {selectedService?.name} tokens via TokenGasPaymaster. 
-                    No native tXDC needed. Contract: <code className="text-[10px] bg-purple-100 px-1 rounded">{process.env.NEXT_PUBLIC_PAYMASTER_ADDRESS?.slice(0,12)}...</code>
+                    No native tXDC needed.
                   </span>
                 </div>
               )}
