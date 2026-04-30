@@ -139,6 +139,22 @@ export default function SubscribePage() {
       const smartAccountAddress = await getCounterFactualAddress(wallet as `0x${string}`);
       setSmartAccount(smartAccountAddress);
 
+      // Step 3: Pre-flight validation for ERC20 mode
+      if (mode === "erc20") {
+        setStep(3);
+        const { validatePreflight, formatPreflightError } = await import("@/lib/preflight");
+        const check = await validatePreflight(
+          smartAccountAddress,
+          selectedTier.service.tokenAddress as `0x${string}`,
+          selectedTier.tier.price,
+        );
+        if (!check.hasEnough) {
+          throw new Error(formatPreflightError(check, selectedService?.name || "Token"));
+        }
+      }
+
+      setStep(4);
+
       const result = await executeAASubscription(
         privateKey,
         SM_ADDRESS,
@@ -183,7 +199,7 @@ export default function SubscribePage() {
     }
   };
 
-  const stepLabels = ["", "Connecting wallet...", "Preparing EtherspotPrime...", "Submitting UserOp to bundler...", "Confirming on-chain...", "Complete!"];
+  const stepLabels = ["", "Connecting wallet...", "Checking balance...", "Estimating gas...", "Submitting UserOp...", "Confirming on-chain...", "Complete!"];
 
   return (
     <AuthGuard>
