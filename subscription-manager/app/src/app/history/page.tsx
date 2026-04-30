@@ -21,7 +21,7 @@ interface TxRecord {
   gasPaid: string;
 }
 
-const explorerUrl = process.env.NEXT_PUBLIC_EXPLORER_URL || "https://explorer.apothem.network/";
+const explorerUrl = process.env.NEXT_PUBLIC_EXPLORER_URL || "https://testnet.xdcscan.com/";
 
 export default function HistoryPage() {
   const { smartAccountAddress } = useAuth();
