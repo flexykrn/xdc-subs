@@ -78,18 +78,6 @@ export function packGasFees(maxPriorityFeePerGas: bigint, maxFeePerGas: bigint):
 // ── UserOp Hash ──
 
 export function getUserOpHash(userOp: PackedUserOp): `0x${string}` {
-  // EntryPoint v0.7 computes:
-  // keccak256(abi.encode(
-  //   keccak256(abi.encode(
-  //     sender, nonce, keccak256(initCode), keccak256(callData),
-  //     accountGasLimits, preVerificationGas, gasFees,
-  //     keccak256(paymasterAndData)
-  //   )),
-  //   address(entryPoint),
-  //   chainId
-  // ))
-  // NOTE: uses abi.encode (NOT encodePacked) for proper ABI encoding with padding
-  
   const innerHash = keccak256(encodeAbiParameters(
     [
       { type: "address" },
@@ -123,7 +111,7 @@ export function getUserOpHash(userOp: PackedUserOp): `0x${string}` {
   ));
 }
 
-// ── Wrap callData in execute() for SimpleAccount ──
+// ── Single call wrapper ──
 
 export function buildExecuteCallData(
   target: `0x${string}`,
@@ -135,6 +123,22 @@ export function buildExecuteCallData(
     args: [target, 0n, innerCallData],
   });
 }
+
+// ── Batch call wrapper ──
+
+export function buildExecuteBatchCallData(
+  targets: `0x${string}`[],
+  values: bigint[],
+  datas: `0x${string}`[],
+): `0x${string}` {
+  return encodeFunctionData({
+    abi: parseAbi(["function executeBatch(address[] calldata dest, uint256[] calldata value, bytes[] calldata func) external"]),
+    functionName: "executeBatch",
+    args: [targets, values, datas],
+  });
+}
+
+// ── Sign UserOp ──
 
 export async function signUserOp(privateKey: `0x${string}`, userOp: PackedUserOp): Promise<`0x${string}`> {
   const account = privateKeyToAccount(privateKey);
@@ -227,9 +231,9 @@ export async function submitUserOp({
 
   // 4. Estimate gas (higher for initCode deployment)
   const hasInitCode = initCode && initCode.length > 2;
-  const verificationGasLimit = hasInitCode ? 500000n : 150000n; // 500k for deploy, 150k for existing
+  const verificationGasLimit = hasInitCode ? 500000n : 150000n;
   const callGasLimit = 300000n;
-  const maxFeePerGas = 1000000000n; // 1 gwei
+  const maxFeePerGas = 1000000000n;
   const maxPriorityFeePerGas = 1000000000n;
   const preVerificationGas = hasInitCode ? 100000n : 50000n;
 
