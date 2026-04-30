@@ -123,7 +123,18 @@ export function getUserOpHash(userOp: PackedUserOp): `0x${string}` {
   ));
 }
 
-// ── Sign UserOp ──
+// ── Wrap callData in execute() for SimpleAccount ──
+
+export function buildExecuteCallData(
+  target: `0x${string}`,
+  innerCallData: `0x${string}`,
+): `0x${string}` {
+  return encodeFunctionData({
+    abi: parseAbi(["function execute(address target, uint256 value, bytes calldata data) external"]),
+    functionName: "execute",
+    args: [target, 0n, innerCallData],
+  });
+}
 
 export async function signUserOp(privateKey: `0x${string}`, userOp: PackedUserOp): Promise<`0x${string}`> {
   const account = privateKeyToAccount(privateKey);

@@ -1,6 +1,6 @@
 import { encodeFunctionData, parseAbi } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
-import { submitUserOp, getCounterFactualAddress, getNonce, type GasMode } from "@/lib/aa-core";
+import { submitUserOp, getCounterFactualAddress, getNonce, buildExecuteCallData, type GasMode } from "@/lib/aa-core";
 
 const subscriptionManagerAbi = parseAbi([
   "function subscribe(uint256 planId) returns (uint256 subscriptionId)",
@@ -34,9 +34,12 @@ export async function executeAASubscription(
       args: [contractAddress as `0x${string}`, BigInt(price)],
     });
 
+    // Wrap in execute() so SimpleAccount can call the token contract
+    const executeApprove = buildExecuteCallData(tokenAddress as `0x${string}`, approveData);
+
     await submitUserOp({
       privateKey: privateKey as `0x${string}`,
-      callData: approveData,
+      callData: executeApprove,
       mode,
       nonce: currentNonce,
     });
@@ -44,15 +47,18 @@ export async function executeAASubscription(
   }
 
   // Build subscribe calldata
-  const callData = encodeFunctionData({
+  const subscribeData = encodeFunctionData({
     abi: subscriptionManagerAbi,
     functionName: "subscribe",
     args: [BigInt(planId)],
   });
 
+  // Wrap in execute() so SimpleAccount can call SubscriptionManager
+  const executeSubscribe = buildExecuteCallData(contractAddress as `0x${string}`, subscribeData);
+
   return await submitUserOp({
     privateKey: privateKey as `0x${string}`,
-    callData,
+    callData: executeSubscribe,
     mode,
     nonce: currentNonce,
   });
@@ -64,15 +70,17 @@ export async function executeAALifecycle(
   subscriptionId: number,
   action: "renew" | "pause" | "cancel",
 ): Promise<{ userOpHash: string; txHash: string }> {
-  const callData = encodeFunctionData({
+  const innerCallData = encodeFunctionData({
     abi: subscriptionManagerAbi,
     functionName: action,
     args: [BigInt(subscriptionId)],
   });
 
+  const executeCallData = buildExecuteCallData(contractAddress as `0x${string}`, innerCallData);
+
   return await submitUserOp({
     privateKey: privateKey as `0x${string}`,
-    callData,
+    callData: executeCallData,
     mode: "sponsor",
   });
 }
