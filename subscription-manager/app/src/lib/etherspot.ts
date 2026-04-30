@@ -3,17 +3,6 @@ import { APOTHEM_CHAIN } from "@/config/chains";
 
 const chainId = APOTHEM_CHAIN.chainIdDecimal;
 
-function requireEnv(name: string): string {
-  const val = process.env[name];
-  if (!val) throw new Error(`Missing env var: ${name}. Check .env.local`);
-  return val;
-}
-
-function getArkaUrl(): string {
-  const key = requireEnv("NEXT_PUBLIC_ARKA_API_KEY");
-  return `https://rpc.etherspot.io/paymaster?apiKey=${key}&chainId=${chainId}&useVp=true`;
-}
-
 export type GasMode = "sponsor" | "erc20" | "multi-token";
 
 export async function getEtherspotPrime(privateKeyHex: string): Promise<PrimeSdk> {
@@ -21,13 +10,23 @@ export async function getEtherspotPrime(privateKeyHex: string): Promise<PrimeSdk
     throw new Error("Invalid private key format. Expected 0x-prefixed hex string.");
   }
 
-  const bundlerUrl = requireEnv("NEXT_PUBLIC_BUNDLER_URL");
+  const bundlerUrl = process.env.NEXT_PUBLIC_BUNDLER_URL;
+  if (!bundlerUrl) {
+    throw new Error("Missing env var: NEXT_PUBLIC_BUNDLER_URL. Check .env.local");
+  }
   const url = new URL(bundlerUrl);
   const apiKey = url.searchParams.get("api-key") || undefined;
   const baseUrl = `${url.protocol}//${url.host}${url.pathname}`;
 
-  const entryPointAddress = requireEnv("NEXT_PUBLIC_ENTRYPOINT_ADDRESS");
-  const walletFactoryAddress = requireEnv("NEXT_PUBLIC_SIMPLE_ACCOUNT_FACTORY_ADDRESS");
+  const entryPointAddress = process.env.NEXT_PUBLIC_ENTRYPOINT_ADDRESS;
+  if (!entryPointAddress) {
+    throw new Error("Missing env var: NEXT_PUBLIC_ENTRYPOINT_ADDRESS. Check .env.local");
+  }
+
+  const walletFactoryAddress = process.env.NEXT_PUBLIC_SIMPLE_ACCOUNT_FACTORY_ADDRESS;
+  if (!walletFactoryAddress) {
+    throw new Error("Missing env var: NEXT_PUBLIC_SIMPLE_ACCOUNT_FACTORY_ADDRESS. Check .env.local");
+  }
 
   const primeSdk = new PrimeSdk(privateKeyHex, {
     chainId,

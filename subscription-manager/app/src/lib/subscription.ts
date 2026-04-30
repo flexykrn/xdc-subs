@@ -2,8 +2,8 @@ import { createPublicClient, http } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
 import { getBestTokenForPayment } from "@/lib/subscription-utils";
 import { SERVICES } from "@/lib/services";
-import { getEtherspotPrime } from "./etherspot";
-import { executeAASubscription, executeAALifecycle, type GasMode } from "./aa-subscription";
+import { submitUserOp, type GasMode, getCounterFactualAddress } from "@/lib/aa-core";
+import { executeAASubscription, executeAALifecycle } from "@/lib/aa-subscription";
 
 const rpcUrl = process.env.NEXT_PUBLIC_APOTHEM_RPC_URL || "https://erpc.apothem.network";
 
@@ -62,6 +62,11 @@ export async function sendSubscriptionAction(
   }
 
   const eoa = privateKeyToAccount(privateKey as `0x${string}`);
+  const smartAccountAddress = await getCounterFactualAddress(eoa.address);
+  const nativeBalance = await publicClient.getBalance({ address: eoa.address });
+
+  console.log("[Subscription] EOA:", eoa.address);
+  console.log("[Subscription] Smart Account:", smartAccountAddress);
 
   // Resolve token for multi-token mode
   let resolvedTokenAddress = params.tokenAddress;
@@ -85,33 +90,12 @@ export async function sendSubscriptionAction(
     }
   }
 
-  // Create a mock EIP1193 provider from private key for EtherspotPrime
-  const provider = {
-    request: async ({ method, params }: any) => {
-      if (method === "eth_accounts" || method === "eth_requestAccounts") {
-        return [eoa.address];
-      }
-      if (method === "eth_sign") {
-        // Not used - Etherspot handles signing internally
-        return "0x";
-      }
-      throw new Error(`Method ${method} not supported by mock provider`);
-    },
-  };
-
-  const primeSdk = await getEtherspotPrime(provider);
-  const smartAccountAddress = await primeSdk.getCounterFactualAddress();
-  const nativeBalance = await publicClient.getBalance({ address: eoa.address });
-
-  console.log("[Subscription] EOA:", eoa.address);
-  console.log("[Subscription] Smart Account:", smartAccountAddress);
-
   let result: { userOpHash: string; txHash: string };
 
   switch (params.action) {
     case "subscribe": {
       result = await executeAASubscription(
-        primeSdk,
+        privateKey,
         params.subscriptionManagerAddress,
         params.planId ?? 0,
         params.mode,
@@ -125,7 +109,7 @@ export async function sendSubscriptionAction(
     case "pause":
     case "cancel": {
       result = await executeAALifecycle(
-        primeSdk,
+        privateKey,
         params.subscriptionManagerAddress,
         params.subscriptionId ?? 0,
         params.action,
