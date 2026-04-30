@@ -1,5 +1,6 @@
 import { encodeFunctionData, parseAbi } from "viem";
-import { submitUserOp, type GasMode } from "@/lib/aa-core";
+import { privateKeyToAccount } from "viem/accounts";
+import { submitUserOp, getCounterFactualAddress, getNonce, type GasMode } from "@/lib/aa-core";
 
 const subscriptionManagerAbi = parseAbi([
   "function subscribe(uint256 planId) returns (uint256 subscriptionId)",
@@ -20,6 +21,11 @@ export async function executeAASubscription(
   tokenAddress?: string,
   price?: string,
 ): Promise<{ userOpHash: string; txHash: string }> {
+  // Get smart account and starting nonce
+  const owner = privateKeyToAccount(privateKey as `0x${string}`).address;
+  const sa = await getCounterFactualAddress(owner);
+  let currentNonce = await getNonce(sa);
+
   // ALWAYS approve first — subscription requires token payment regardless of gas mode
   if (tokenAddress && price) {
     const approveData = encodeFunctionData({
@@ -31,8 +37,10 @@ export async function executeAASubscription(
     await submitUserOp({
       privateKey: privateKey as `0x${string}`,
       callData: approveData,
-      mode, // gas sponsored for approval too
+      mode,
+      nonce: currentNonce,
     });
+    currentNonce = currentNonce + 1n;
   }
 
   // Build subscribe calldata
@@ -46,6 +54,7 @@ export async function executeAASubscription(
     privateKey: privateKey as `0x${string}`,
     callData,
     mode,
+    nonce: currentNonce,
   });
 }
 

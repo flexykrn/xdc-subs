@@ -194,10 +194,12 @@ export async function submitUserOp({
   privateKey,
   callData,
   mode,
+  nonce: providedNonce,
 }: {
   privateKey: `0x${string}`;
   callData: `0x${string}`;
   mode: GasMode;
+  nonce?: bigint;
 }): Promise<{ txHash: string; userOpHash: string }> {
   const account = privateKeyToAccount(privateKey);
   const owner = account.address;
@@ -205,8 +207,8 @@ export async function submitUserOp({
   // 1. Get smart account address
   const sender = await getCounterFactualAddress(owner);
 
-  // 2. Get nonce
-  const nonce = await getNonce(sender);
+  // 2. Get nonce (use provided or read from chain)
+  const nonce = providedNonce !== undefined ? providedNonce : await getNonce(sender);
 
   // 3. Check if account deployed
   const code = await publicClient.getBytecode({ address: sender });
