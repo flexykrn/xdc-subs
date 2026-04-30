@@ -46,6 +46,8 @@ export async function getEtherspotPrime(walletProviderLike: any): Promise<PrimeS
 
   const primeSdk = new PrimeSdk(privateKey, {
     chainId,
+    entryPointAddress: process.env.NEXT_PUBLIC_ENTRYPOINT_ADDRESS || "0x0000000071727De22E5E9d8BAf0edAc6f37da032",
+    walletFactoryAddress: process.env.NEXT_PUBLIC_SIMPLE_ACCOUNT_FACTORY_ADDRESS || "0x71D0Fe73d7f05A8D7Ce0F7c68Df71c4A3F0d80b0",
     bundlerProvider: new EtherspotBundler(chainId, apiKey, baseUrl),
   });
   return primeSdk;
