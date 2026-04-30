@@ -1,6 +1,18 @@
 [
   {
     "action": "subscribe",
+    "mode": "sponsor",
+    "startedAt": "2026-04-30T15:23:56.026Z",
+    "result": "success",
+    "wallet": "0x547be814540addc6abdaa4c378c5cd77eb612cfb",
+    "token": "0x4c4456bF7A0e572D2C697626025DcB6d3D3Df7D1",
+    "subscriptionId": "14",
+    "uoHash": "0x622b8de96dd12d5276cc9bce2dcd51c1069232b365de9e5746c239b1af2a88d7",
+    "txHash": "0x63a45d40452fb4a72ce76126fd65f2ccbd327c6e7aeeb3b326cfcbf3cc063983",
+    "confirmedAt": "2026-04-30T15:23:56.026Z"
+  },
+  {
+    "action": "subscribe",
     "mode": "erc20",
     "startedAt": "2026-04-30T15:21:56.687Z",
     "result": "success",

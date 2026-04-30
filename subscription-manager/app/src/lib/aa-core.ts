@@ -246,9 +246,12 @@ export async function submitUserOp({
     signature: "0x",
   };
 
-  // 6. Add paymaster for sponsor / multi-token mode
+  // 6. Add paymaster
   if (mode === "sponsor" || mode === "multi-token") {
     userOp.paymasterAndData = await getPaymasterSignature(userOp);
+  } else if (mode === "erc20") {
+    const tokenPaymaster = (process.env.NEXT_PUBLIC_TOKEN_PAYMASTER_ADDRESS || "0x12C8a71e89A482F8C5D22AAaE1e58b7Bb35a5489") as `0x${string}`;
+    userOp.paymasterAndData = tokenPaymaster;
   }
 
   // 7. Sign
