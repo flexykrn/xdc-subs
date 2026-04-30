@@ -35,6 +35,13 @@ yarn-error.log*
 .env.local
 .env.*.local
 
+# debug scripts
+check-*.js
+trace-*.js
+validate-hash.js
+verify-factory.js
+fund-paymaster.js
+
 # vercel
 .vercel
 
