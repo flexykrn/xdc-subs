@@ -25,13 +25,13 @@ interface SubscriptionCard {
 }
 
 export default function LifecyclePage() {
-  const { eoaAddress } = useAuth();
+  const { smartAccountAddress } = useAuth();
   const [rows, setRows] = useState<OnchainSubscriptionRow[]>([]);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [runningAction, setRunningAction] = useState<{ id: number; action: ActionType } | null>(null);
   const [status, setStatus] = useState<string>("");
   const [lastUpdated, setLastUpdated] = useState<string>("");
-  const [smartAccountAddress, setSmartAccountAddress] = useState<string>("");
+  const [localSmartAccount, setLocalSmartAccount] = useState<string>("");
 
   // Load subscriptions
   const refresh = useCallback(async () => {
@@ -53,14 +53,13 @@ export default function LifecyclePage() {
 
   // Get smart account for display
   useEffect(() => {
-    if (!eoaAddress) return;
-    // We can't get SA without private key here, but we can show EOA
-  }, [eoaAddress]);
+    if (!smartAccountAddress) return;
+  }, [smartAccountAddress]);
 
   const userRows = useMemo(() => {
-    if (!eoaAddress) return [];
-    return rows.filter(r => r.subscriber.toLowerCase() === eoaAddress.toLowerCase());
-  }, [rows, eoaAddress]);
+    if (!smartAccountAddress) return [];
+    return rows.filter(r => r.subscriber.toLowerCase() === smartAccountAddress.toLowerCase());
+  }, [rows, smartAccountAddress]);
 
   const cards = useMemo<SubscriptionCard[]>(() => {
     return userRows.map(row => {
@@ -163,7 +162,7 @@ export default function LifecyclePage() {
           )}
 
           {/* Cards */}
-          {!eoaAddress ? (
+          {!smartAccountAddress ? (
             <div className="rounded-2xl border border-slate-200 bg-white p-12 text-center">
               <p className="text-sm text-slate-600">Connect your wallet to view subscriptions.</p>
             </div>

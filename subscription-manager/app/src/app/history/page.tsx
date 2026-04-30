@@ -6,62 +6,60 @@ import Link from "next/link";
 import { useAuth } from "@/components/AuthContext";
 import AuthGuard from "@/components/AuthGuard";
 import { getTierByPlanId } from "@/lib/services";
-import { readTelemetryRows, readServerTelemetryRows, mergeTelemetryRows, type TelemetryRow } from "@/lib/telemetry";
-
-const explorerUrl = process.env.NEXT_PUBLIC_EXPLORER_URL || "https://explorer.apothem.network/";
+import { fetchSubscriptionEventsForUser } from "@/lib/blockchain-events";
 
 interface TxRecord {
   id: string;
-  type: "subscribe" | "renew" | "pause" | "cancel";
+  type: "subscribed" | "renewed" | "paused" | "cancelled" | "userOp";
   service: { name: string; logo: string } | null;
   plan: string;
   mode: string;
-  status: "success" | "pending" | "failed";
+  status: "success" | "failed";
   txHash: string;
   userOpHash?: string;
   timestamp: Date;
   gasPaid: string;
 }
 
+const explorerUrl = process.env.NEXT_PUBLIC_EXPLORER_URL || "https://explorer.apothem.network/";
+
 export default function HistoryPage() {
-  const { eoaAddress, smartAccountAddress } = useAuth();
+  const { smartAccountAddress } = useAuth();
   const [records, setRecords] = useState<TxRecord[]>([]);
   const [isLoading, setIsLoading] = useState(false);
-  const [filter, setFilter] = useState<"all" | "subscribe" | "renew" | "pause" | "cancel">("all");
-  const [statusFilter, setStatusFilter] = useState<"all" | "success" | "pending" | "failed">("all");
+  const [filter, setFilter] = useState<"all" | "subscribed" | "renewed" | "paused" | "cancelled">("all");
+  const [statusFilter, setStatusFilter] = useState<"all" | "success" | "failed">("all");
   const [selectedRecord, setSelectedRecord] = useState<string | null>(null);
 
   const loadData = useCallback(async () => {
-    if (!eoaAddress) return;
+    if (!smartAccountAddress) return;
     setIsLoading(true);
     try {
-      const localRows = readTelemetryRows();
-      const serverRows = await readServerTelemetryRows();
-      const merged = mergeTelemetryRows(serverRows, localRows);
+      const events = await fetchSubscriptionEventsForUser(smartAccountAddress as `0x${string}`);
 
-      const txRecords: TxRecord[] = merged
-        .filter(r => r.wallet?.toLowerCase() === eoaAddress.toLowerCase())
-        .map((r, i) => {
-          const serviceInfo = r.subscriptionId ? getTierByPlanId(Number(r.subscriptionId)) : null;
-          return {
-            id: `${r.txHash || r.uoHash || i}-${i}`,
-            type: r.action as TxRecord["type"],
-            service: serviceInfo ? { name: serviceInfo.service.name, logo: serviceInfo.service.logo } : null,
-            plan: serviceInfo?.tier.name || "Unknown",
-            mode: r.mode,
-            status: r.result as TxRecord["status"],
-            txHash: r.txHash || "",
-            userOpHash: r.uoHash,
-            timestamp: r.startedAt ? new Date(r.startedAt) : new Date(),
-            gasPaid: r.mode === "sponsor" ? "$0 (sponsored)" : r.mode === "erc20" ? "Paid in tokens" : "Multi-token",
-          };
-        });
+      const txRecords: TxRecord[] = events.map((event, i) => {
+        const serviceInfo = event.planId ? getTierByPlanId(Number(event.planId)) : null;
+        return {
+          id: `${event.txHash}-${i}`,
+          type: event.type as TxRecord["type"],
+          service: serviceInfo ? { name: serviceInfo.service.name, logo: serviceInfo.service.logo } : null,
+          plan: serviceInfo?.tier.name || (event.subscriptionId ? `Sub #${event.subscriptionId}` : "UserOp"),
+          mode: "sponsor",
+          status: event.status,
+          txHash: event.txHash,
+          userOpHash: event.userOpHash,
+          timestamp: new Date(event.timestamp),
+          gasPaid: event.status === "failed" ? "Reverted" : "$0 (sponsored)",
+        };
+      });
 
       setRecords(txRecords);
+    } catch (err) {
+      console.error("[History] Failed to load events:", err);
     } finally {
       setIsLoading(false);
     }
-  }, [eoaAddress]);
+  }, [smartAccountAddress]);
 
   useEffect(() => {
     loadData();
@@ -124,14 +122,13 @@ export default function HistoryPage() {
           {/* Filters */}
           <div className="mt-6 flex flex-wrap items-center gap-3">
             <FilterChip label="All" active={filter === "all"} onClick={() => setFilter("all")} />
-            <FilterChip label="Subscribed" active={filter === "subscribe"} onClick={() => setFilter("subscribe")} />
-            <FilterChip label="Renewed" active={filter === "renew"} onClick={() => setFilter("renew")} />
-            <FilterChip label="Paused" active={filter === "pause"} onClick={() => setFilter("pause")} />
-            <FilterChip label="Cancelled" active={filter === "cancel"} onClick={() => setFilter("cancel")} />
+            <FilterChip label="Subscribed" active={filter === "subscribed"} onClick={() => setFilter("subscribed")} />
+            <FilterChip label="Renewed" active={filter === "renewed"} onClick={() => setFilter("renewed")} />
+            <FilterChip label="Paused" active={filter === "paused"} onClick={() => setFilter("paused")} />
+            <FilterChip label="Cancelled" active={filter === "cancelled"} onClick={() => setFilter("cancelled")} />
             <div className="mx-2 h-6 w-px bg-slate-300" />
             <FilterChip label="All Status" active={statusFilter === "all"} onClick={() => setStatusFilter("all")} />
             <FilterChip label="Success" active={statusFilter === "success"} onClick={() => setStatusFilter("success")} color="emerald" />
-            <FilterChip label="Pending" active={statusFilter === "pending"} onClick={() => setStatusFilter("pending")} color="amber" />
             <FilterChip label="Failed" active={statusFilter === "failed"} onClick={() => setStatusFilter("failed")} color="red" />
           </div>
 

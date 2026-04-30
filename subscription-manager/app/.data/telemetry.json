@@ -1,6 +1,78 @@
 [
   {
     "action": "subscribe",
+    "mode": "erc20",
+    "startedAt": "2026-04-30T15:13:28.815Z",
+    "result": "success",
+    "wallet": "0x547be814540addc6abdaa4c378c5cd77eb612cfb",
+    "token": "0x87CB2de7edc1B9D725a5a6DeDdcbEF7e36fe3084",
+    "subscriptionId": "9",
+    "uoHash": "0x92400360a0f4b62d8231dd1cbadd228ec227880eae1a49bbf225238fa0c0dfe9",
+    "txHash": "0x8ea01d6e36fe2524b19c9b293f45ee6c72b2fd94d0832f56fea3b37b69d9bc19",
+    "confirmedAt": "2026-04-30T15:13:28.815Z"
+  },
+  {
+    "action": "subscribe",
+    "mode": "sponsor",
+    "startedAt": "2026-04-30T14:54:31.364Z",
+    "result": "success",
+    "wallet": "0x547be814540addc6abdaa4c378c5cd77eb612cfb",
+    "token": "0x591CCebbd943a2F9a11F64eBf627d86600a0f38e",
+    "subscriptionId": "7",
+    "uoHash": "0xc4e8656c67d27b7be064beb7d3eba905440aa8a4e68618e1cd7d3515f51e111a",
+    "txHash": "0xbbbd3de92f7c550b6c1e9b9aa1f456d45e0fd19e32d62957d1e5d3e9d79d7998",
+    "confirmedAt": "2026-04-30T14:54:31.364Z"
+  },
+  {
+    "action": "subscribe",
+    "mode": "sponsor",
+    "startedAt": "2026-04-30T14:49:46.828Z",
+    "result": "success",
+    "wallet": "0x547be814540addc6abdaa4c378c5cd77eb612cfb",
+    "token": "0x9F00925759A9F0FEb13373336B761A7267AE66a9",
+    "subscriptionId": "4",
+    "uoHash": "0xfb4b6a422e44a43eb09425b19b69806db5707ed2db51bcbc5fdcd62bc3db9092",
+    "txHash": "0x966c22ae9ecc3c857029dea6e63c4e908b40578a7db4cdc579829e5c251eab24",
+    "confirmedAt": "2026-04-30T14:49:46.828Z"
+  },
+  {
+    "action": "subscribe",
+    "mode": "sponsor",
+    "startedAt": "2026-04-30T14:24:23.133Z",
+    "result": "success",
+    "wallet": "0x547be814540addc6abdaa4c378c5cd77eb612cfb",
+    "token": "0x9F00925759A9F0FEb13373336B761A7267AE66a9",
+    "subscriptionId": "4",
+    "uoHash": "0x74d88017032120ee3e3a0431b3e78a843d13acec91a280c8d034c08a6bc82e21",
+    "txHash": "0xe7be1341b04ad16a0f34893fffb1e595f245f60bb5c792cbe0016eeeefcd722c",
+    "confirmedAt": "2026-04-30T14:24:23.133Z"
+  },
+  {
+    "action": "subscribe",
+    "mode": "sponsor",
+    "startedAt": "2026-04-30T14:12:06.844Z",
+    "result": "success",
+    "wallet": "0x547be814540addc6abdaa4c378c5cd77eb612cfb",
+    "token": "0x896F79883Bf0620Afcd3D8942f1Db8d3F447AE84",
+    "subscriptionId": "1",
+    "uoHash": "0x6e32393f0e4569b41f294595c1e5e645a500dbab6496444b7900db54dffa4d87",
+    "txHash": "0xd4d770751700e093dcdbd67b3c65323b51130b17446924b0e52f26738dba8dfc",
+    "confirmedAt": "2026-04-30T14:12:06.844Z"
+  },
+  {
+    "action": "subscribe",
+    "mode": "sponsor",
+    "startedAt": "2026-04-30T13:59:38.251Z",
+    "result": "success",
+    "wallet": "0x547be814540addc6abdaa4c378c5cd77eb612cfb",
+    "token": "0x591CCebbd943a2F9a11F64eBf627d86600a0f38e",
+    "subscriptionId": "7",
+    "uoHash": "0x8c50ac2a1285d58896b5b04342fa76a8f2fdb9327b88c2c0dd51c956c176ab36",
+    "txHash": "0xa7499e2ce57f7de9c5a3a009506b54cb76c74f3a775c8f25fe55ac07d139cc61",
+    "confirmedAt": "2026-04-30T13:59:38.251Z"
+  },
+  {
+    "action": "subscribe",
     "mode": "sponsor",
     "startedAt": "2026-04-30T13:48:41.083Z",
     "result": "success",
