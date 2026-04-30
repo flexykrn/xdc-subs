@@ -12,12 +12,17 @@ const erc20Abi = parseAbi([
   "function approve(address spender, uint256 amount) returns (bool)",
 ]);
 
-const arkaApiKey = process.env.NEXT_PUBLIC_ARKA_API_KEY || "etherspot_AA2QUX5f6tqxLEA8hC7XQu";
-const arkaUrl = "https://rpc.etherspot.io/paymaster";
 const chainId = 51;
 
+function requireEnv(name: string): string {
+  const val = process.env[name];
+  if (!val) throw new Error(`Missing env var: ${name}. Check .env.local`);
+  return val;
+}
+
 function getArkaUrl(): string {
-  return `${arkaUrl}?apiKey=${arkaApiKey}&chainId=${chainId}&useVp=true`;
+  const key = requireEnv("NEXT_PUBLIC_ARKA_API_KEY");
+  return `https://rpc.etherspot.io/paymaster?apiKey=${key}&chainId=${chainId}&useVp=true`;
 }
 
 export type GasMode = "sponsor" | "erc20" | "multi-token";
