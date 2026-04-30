@@ -5,8 +5,8 @@ import Image from "next/image";
 import Link from "next/link";
 
 import { getServiceById, getTierByPlanId } from "@/lib/services";
-import { getEtherspotPrime } from "@/lib/etherspot";
 import { executeAASubscription } from "@/lib/aa-subscription";
+import { getCounterFactualAddress } from "@/lib/aa-core";
 import { appendTelemetryRow, appendTelemetryRowRemote } from "@/lib/telemetry";
 import { connectWeb3Auth, getProviderAccounts, getProviderPrivateKey } from "@/lib/web3auth";
 
@@ -34,7 +34,7 @@ export default function SubscribePage() {
   const [showSuccess, setShowSuccess] = useState(false);
   const [step, setStep] = useState(0);
 
-  const { eoaAddress, isAuthenticated } = useAuth();
+  const { eoaAddress, smartAccountAddress, isAuthenticated } = useAuth();
 
   const selectedService = useMemo(() => getServiceById(serviceId), [serviceId]);
   const selectedTier = useMemo(() => getTierByPlanId(Number(planId)), [planId]);
@@ -48,7 +48,7 @@ export default function SubscribePage() {
 
   // Check token balance when service/tier is selected (uses auth context, no reconnect)
   useEffect(() => {
-    if (!selectedTier || !isAuthenticated || !eoaAddress) return;
+    if (!selectedTier || !isAuthenticated || !smartAccountAddress) return;
     const checkBalance = async () => {
       try {
         const rpcUrl = process.env.NEXT_PUBLIC_APOTHEM_RPC_URL || "https://erpc.apothem.network";
@@ -59,7 +59,7 @@ export default function SubscribePage() {
             jsonrpc: "2.0",
             id: 1,
             method: "eth_call",
-            params: [{ to: selectedTier.service.tokenAddress, data: `0x70a08231000000000000000000000000${eoaAddress.slice(2)}` }, "latest"]
+            params: [{ to: selectedTier.service.tokenAddress, data: `0x70a08231000000000000000000000000${smartAccountAddress.slice(2)}` }, "latest"]
           })
         });
         const data = await response.json();
@@ -72,11 +72,11 @@ export default function SubscribePage() {
       } catch { /* ignore */ }
     };
     checkBalance();
-  }, [selectedTier, eoaAddress, isAuthenticated]);
+  }, [selectedTier, smartAccountAddress, isAuthenticated]);
 
   // Check native balance for fallback awareness
   useEffect(() => {
-    if (!eoaAddress) return;
+    if (!smartAccountAddress) return;
     const checkNative = async () => {
       try {
         const rpcUrl = process.env.NEXT_PUBLIC_APOTHEM_RPC_URL || "https://erpc.apothem.network";
@@ -87,7 +87,7 @@ export default function SubscribePage() {
             jsonrpc: "2.0",
             id: 1,
             method: "eth_getBalance",
-            params: [eoaAddress, "latest"]
+            params: [smartAccountAddress, "latest"]
           })
         });
         const data = await response.json();
@@ -98,7 +98,7 @@ export default function SubscribePage() {
       } catch { /* ignore */ }
     };
     checkNative();
-  }, [eoaAddress]);
+  }, [smartAccountAddress]);
 
   // Payment mode auto-selection
   useEffect(() => {
@@ -133,15 +133,14 @@ export default function SubscribePage() {
       const accounts = await getProviderAccounts(provider);
       const wallet = accounts[0] || "";
 
-      // Step 2-3: Create EtherspotPrime from private key and submit AA UserOp
+      // Step 2-3: Get smart account address and submit AA UserOp
       setStep(2);
       const privateKey = await getProviderPrivateKey(provider);
-      const primeSdk = await getEtherspotPrime(privateKey);
-      const smartAccountAddress = await primeSdk.getCounterFactualAddress();
+      const smartAccountAddress = await getCounterFactualAddress(wallet as `0x${string}`);
       setSmartAccount(smartAccountAddress);
 
       const result = await executeAASubscription(
-        primeSdk,
+        privateKey,
         SM_ADDRESS,
         Number(planId),
         mode,
