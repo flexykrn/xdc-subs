@@ -102,14 +102,9 @@ export async function POST(req: NextRequest) {
       signature: rawUserOp.signature as `0x${string}`,
     };
 
-    // Validate paymasterAndData is set for sponsor / multi-token mode
-    if ((mode === "sponsor" || mode === "multi-token") && (!userOp.paymasterAndData || userOp.paymasterAndData === "0x")) {
-      throw new Error("PaymasterAndData required for sponsor mode but not provided");
-    }
-
-    // For ERC20 mode, no paymaster needed
-    if (mode === "erc20" && userOp.paymasterAndData !== "0x") {
-      throw new Error("ERC20 mode should not have paymasterAndData");
+    // Validate paymasterAndData is set for sponsor / multi-token / erc20 mode
+    if ((mode === "sponsor" || mode === "multi-token" || mode === "erc20") && (!userOp.paymasterAndData || userOp.paymasterAndData === "0x")) {
+      throw new Error("PaymasterAndData required for " + mode + " mode but not provided");
     }
 
     // Submit to EntryPoint
