@@ -36,13 +36,8 @@ yarn-error.log*
 .env.*.local
 
 # debug scripts
-check-*.js
-debug-*.js
-trace-*.js
-validate-*.js
-fund-*.js
-commit1.ps1
-verify-*.js
+check-sa-balance.js
+fund-sa.js
 
 # vercel
 .vercel

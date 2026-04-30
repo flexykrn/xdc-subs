@@ -72,7 +72,8 @@ export async function sendSubscriptionAction(
   let resolvedTokenAddress = params.tokenAddress;
   let resolvedTokenAmount = params.tokenAmount;
 
-  if (params.mode === "multi-token" && params.action === "subscribe") {
+  // Mode "multi-token" removed — only sponsor and erc20 supported
+  if (params.action === "subscribe") {
     try {
       const best = await getBestTokenForPayment(eoa.address, params.tokenAmount || "0");
       if (best) {

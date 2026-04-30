@@ -15,10 +15,12 @@ const RPC_URL = process.env.NEXT_PUBLIC_APOTHEM_RPC_URL || "https://erpc.apothem
 const CHAIN_ID = 51;
 const ENTRYPOINT = (process.env.NEXT_PUBLIC_ENTRYPOINT_ADDRESS || "0x0000000071727De22E5E9d8BAf0edAc6f37da032") as `0x${string}`;
 const FACTORY = (process.env.NEXT_PUBLIC_SIMPLE_ACCOUNT_FACTORY_ADDRESS || "0x91E60e0613810449d098b0b5Ec8b51A0FE8c8985") as `0x${string}`;
+const SPONSOR_PAYMASTER = (process.env.NEXT_PUBLIC_PAYMASTER_ADDRESS || "0x8361Fae5A25e71C2E1db35cDE13E7150bB7b1a42") as `0x${string}`;
+const TOKEN_PAYMASTER = (process.env.NEXT_PUBLIC_TOKEN_PAYMASTER_ADDRESS || "0x17D390EdEb894d8c8B5cD5e6fD47Db923CB4A2c4") as `0x${string}`;
 
 const publicClient = createPublicClient({ transport: http(RPC_URL) });
 
-export type GasMode = "sponsor" | "erc20" | "multi-token";
+export type GasMode = "sponsor" | "erc20";
 
 export type PackedUserOp = {
   sender: `0x${string}`;
@@ -147,9 +149,9 @@ export async function signUserOp(privateKey: `0x${string}`, userOp: PackedUserOp
   return signature;
 }
 
-// ── Get Paymaster Signature ──
+// ── Get Paymaster Signature (Sponsor Mode) ──
 
-async function getPaymasterSignature(userOp: PackedUserOp): Promise<`0x${string}`> {
+async function getSponsorPaymasterSignature(userOp: PackedUserOp): Promise<`0x${string}`> {
   const res = await fetch("/api/paymaster/sign", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -173,6 +175,15 @@ async function getPaymasterSignature(userOp: PackedUserOp): Promise<`0x${string}
   return data.paymasterAndData as `0x${string}`;
 }
 
+// ── Build ERC-20 PaymasterAndData ──
+
+function buildTokenPaymasterAndData(tokenAddress: `0x${string}`): `0x${string}` {
+  // Format: paymaster(20) + verificationGasLimit(16) + postOpGasLimit(16) + token(20)
+  const verificationGasLimit = toHex(150000n, { size: 16 });
+  const postOpGasLimit = toHex(50000n, { size: 16 });
+  return concat([TOKEN_PAYMASTER, verificationGasLimit, postOpGasLimit, tokenAddress]);
+}
+
 function serializeUserOp(userOp: PackedUserOp) {
   return {
     ...userOp,
@@ -184,6 +195,13 @@ function serializeUserOp(userOp: PackedUserOp) {
 // ── Send to Bundler ──
 
 async function sendToBundler(userOp: PackedUserOp, mode: GasMode): Promise<{ userOpHash: string; txHash?: string }> {
+  console.log("[AA-CORE] Sending UserOp:", JSON.stringify({
+    sender: userOp.sender,
+    nonce: userOp.nonce.toString(),
+    mode,
+    paymasterAndDataLength: userOp.paymasterAndData.length,
+  }, null, 2));
+
   const res = await fetch("/api/bundler/submit", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -209,11 +227,13 @@ export async function submitUserOp({
   privateKey,
   callData,
   mode,
+  tokenAddress,
   nonce: providedNonce,
 }: {
   privateKey: `0x${string}`;
   callData: `0x${string}`;
   mode: GasMode;
+  tokenAddress?: `0x${string}`;
   nonce?: bigint;
 }): Promise<{ txHash: string; userOpHash: string }> {
   const account = privateKeyToAccount(privateKey);
@@ -222,14 +242,14 @@ export async function submitUserOp({
   // 1. Get smart account address
   const sender = await getCounterFactualAddress(owner);
 
-  // 2. Get nonce (use provided or read from chain)
+  // 2. Get nonce
   const nonce = providedNonce !== undefined ? providedNonce : await getNonce(sender);
 
   // 3. Check if account deployed
   const code = await publicClient.getBytecode({ address: sender });
   const initCode = code && code.length > 2 ? "0x" : buildInitCode(owner);
 
-  // 4. Estimate gas (higher for initCode deployment)
+  // 4. Estimate gas
   const hasInitCode = initCode && initCode.length > 2;
   const verificationGasLimit = hasInitCode ? 500000n : 150000n;
   const callGasLimit = 300000n;
@@ -250,19 +270,28 @@ export async function submitUserOp({
     signature: "0x",
   };
 
-  // 6. Add paymaster
-  if (mode === "sponsor" || mode === "multi-token") {
-    userOp.paymasterAndData = await getPaymasterSignature(userOp);
+  // 6. Attach paymaster based on mode
+  if (mode === "sponsor") {
+    userOp.paymasterAndData = await getSponsorPaymasterSignature(userOp);
   } else if (mode === "erc20") {
-    const tokenPaymaster = (process.env.NEXT_PUBLIC_TOKEN_PAYMASTER_ADDRESS || "0x12C8a71e89A482F8C5D22AAaE1e58b7Bb35a5489") as `0x${string}`;
-    userOp.paymasterAndData = tokenPaymaster;
+    if (!tokenAddress) throw new Error("tokenAddress required for erc20 mode");
+    userOp.paymasterAndData = buildTokenPaymasterAndData(tokenAddress);
   }
 
   // 7. Sign
   const signature = await signUserOp(privateKey, userOp);
   userOp = { ...userOp, signature };
 
-  // 8. Send to bundler
+  // 8. Log pre-flight
+  console.log("[AA-CORE] Pre-flight UserOp:", {
+    sender: userOp.sender,
+    nonce: userOp.nonce.toString(),
+    mode,
+    paymasterAndData: userOp.paymasterAndData,
+    paymasterEmpty: userOp.paymasterAndData === "0x",
+  });
+
+  // 9. Send to bundler
   const result = await sendToBundler(userOp, mode);
 
   if (!result.txHash) {

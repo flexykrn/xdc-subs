@@ -22,7 +22,7 @@ const EXPLORER_URL = process.env.NEXT_PUBLIC_EXPLORER_URL || "https://explorer.a
 export default function SubscribePage() {
   const [serviceId, setServiceId] = useState("");
   const [planId, setPlanId] = useState("1");
-  const [mode, setMode] = useState<"sponsor" | "erc20" | "multi-token">("sponsor");
+  const [mode, setMode] = useState<"sponsor" | "erc20">("sponsor");
   const [isWorking, setIsWorking] = useState(false);
   const [error, setError] = useState("");
   const [txHash, setTxHash] = useState("");
@@ -267,7 +267,7 @@ export default function SubscribePage() {
               
               {/* Mode selector buttons */}
               <div className="flex gap-2 mb-3">
-                {(["sponsor", "erc20", "multi-token"] as const).map((m) => (
+                {(["sponsor", "erc20"] as const).map((m) => (
                   <button
                     key={m}
                     onClick={() => setMode(m)}
@@ -278,7 +278,7 @@ export default function SubscribePage() {
                         : "border-slate-200 bg-white text-slate-600 hover:bg-slate-50"
                     }`}
                   >
-                    {m === "sponsor" ? "🎁 Gasless" : m === "erc20" ? "💰 ERC20 Gas" : "⚡ Best Route"}
+                    {m === "sponsor" ? "🎁 Gasless" : "💰 ERC20 Gas"}
                   </button>
                 ))}
               </div>
@@ -298,15 +298,6 @@ export default function SubscribePage() {
                   <span>
                     <strong>ERC20 Gas Mode</strong> — Pay gas using {selectedService?.name} tokens via TokenGasPaymaster. 
                     No native tXDC needed.
-                  </span>
-                </div>
-              )}
-              
-              {mode === "multi-token" && (
-                <div className="flex items-center gap-2 text-xs text-cyan-700 bg-cyan-50 rounded-lg p-3">
-                  <span className="text-lg">⚡</span>
-                  <span>
-                    <strong>Best Route</strong> — Auto-selects the token with highest balance for gasless experience.
                   </span>
                 </div>
               )}
