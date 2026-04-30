@@ -13,12 +13,11 @@ interface TxRecord {
   type: "subscribed" | "renewed" | "paused" | "cancelled" | "userOp";
   service: { name: string; logo: string } | null;
   plan: string;
-  mode: string;
   status: "success" | "failed";
   txHash: string;
   userOpHash?: string;
   timestamp: Date;
-  gasPaid: string;
+  blockNumber: number;
 }
 
 const explorerUrl = process.env.NEXT_PUBLIC_EXPLORER_URL || "https://testnet.xdcscan.com/";
@@ -29,7 +28,6 @@ export default function HistoryPage() {
   const [isLoading, setIsLoading] = useState(false);
   const [filter, setFilter] = useState<"all" | "subscribed" | "renewed" | "paused" | "cancelled">("all");
   const [statusFilter, setStatusFilter] = useState<"all" | "success" | "failed">("all");
-  const [selectedRecord, setSelectedRecord] = useState<string | null>(null);
 
   const loadData = useCallback(async () => {
     if (!smartAccountAddress) return;
@@ -43,12 +41,11 @@ export default function HistoryPage() {
           type: event.type as TxRecord["type"],
           service: serviceInfo ? { name: serviceInfo.service.name, logo: serviceInfo.service.logo } : null,
           plan: serviceInfo?.tier.name || (event.subscriptionId ? `Sub #${event.subscriptionId}` : "UserOp"),
-          mode: "sponsor",
           status: event.status,
           txHash: event.txHash,
           userOpHash: event.userOpHash,
           timestamp: new Date(event.timestamp),
-          gasPaid: event.status === "failed" ? "Reverted" : "$0 (sponsored)",
+          blockNumber: Number(event.blockNumber),
         };
       });
       setRecords(txRecords);
@@ -61,7 +58,7 @@ export default function HistoryPage() {
 
   useEffect(() => {
     loadData();
-    const interval = setInterval(loadData, 30000); // 30s polling
+    const interval = setInterval(loadData, 30000);
     return () => clearInterval(interval);
   }, [loadData]);
 
@@ -73,148 +70,78 @@ export default function HistoryPage() {
     });
   }, [records, filter, statusFilter]);
 
-  const stats = useMemo(() => ({
-    total: records.length,
-    success: records.filter(r => r.status === "success").length,
-    sponsor: records.filter(r => r.mode === "sponsor").length,
-    erc20: records.filter(r => r.mode === "erc20").length,
-  }), [records]);
-
   return (
     <AuthGuard>
-      <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100">
-        <div className="border-b border-slate-200 bg-white">
-          <div className="mx-auto max-w-6xl px-4 py-6">
+      <div className="min-h-screen bg-slate-50">
+        {/* Header */}
+        <div className="bg-white border-b border-slate-200">
+          <div className="mx-auto max-w-4xl px-4 py-5">
             <div className="flex items-center justify-between">
               <div>
-                <h1 className="text-2xl font-bold text-slate-900">Transaction History</h1>
-                <p className="mt-1 text-sm text-slate-500">Real-time AA UserOps and on-chain events</p>
+                <h1 className="text-xl font-bold text-slate-900">History</h1>
+                <p className="text-xs text-slate-500 mt-0.5">Your on-chain activity</p>
               </div>
-              <div className="flex items-center gap-3">
-                {smartAccountAddress && (
-                  <div className="rounded-lg bg-slate-100 px-3 py-2 text-xs font-mono text-slate-600">
-                    AA: {smartAccountAddress.slice(0, 8)}...{smartAccountAddress.slice(-6)}
-                  </div>
-                )}
-                <button
-                  onClick={loadData}
-                  disabled={isLoading}
-                  className="rounded-lg bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-800 disabled:opacity-50"
-                >
-                  {isLoading ? "⟳ Refreshing..." : "⟳ Refresh"}
-                </button>
-              </div>
+              <button
+                onClick={loadData}
+                disabled={isLoading}
+                className="text-xs font-medium text-slate-600 hover:text-slate-900 disabled:opacity-40"
+              >
+                {isLoading ? "Loading..." : "Refresh"}
+              </button>
             </div>
           </div>
         </div>
 
-        <div className="mx-auto max-w-6xl px-4 py-6">
-          {/* Stats */}
-          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-            <StatBox label="Total" value={stats.total} color="bg-blue-500" />
-            <StatBox label="Successful" value={stats.success} color="bg-emerald-500" />
-            <StatBox label="Gasless" value={stats.sponsor} color="bg-violet-500" />
-            <StatBox label="ERC20 Gas" value={stats.erc20} color="bg-amber-500" />
-          </div>
-
+        <div className="mx-auto max-w-4xl px-4 py-4">
           {/* Filters */}
-          <div className="mt-6 flex flex-wrap items-center gap-3">
-            <FilterChip label="All" active={filter === "all"} onClick={() => setFilter("all")} />
-            <FilterChip label="Subscribed" active={filter === "subscribed"} onClick={() => setFilter("subscribed")} />
-            <FilterChip label="Renewed" active={filter === "renewed"} onClick={() => setFilter("renewed")} />
-            <FilterChip label="Paused" active={filter === "paused"} onClick={() => setFilter("paused")} />
-            <FilterChip label="Cancelled" active={filter === "cancelled"} onClick={() => setFilter("cancelled")} />
-            <div className="mx-2 h-6 w-px bg-slate-300" />
-            <FilterChip label="All Status" active={statusFilter === "all"} onClick={() => setStatusFilter("all")} />
-            <FilterChip label="Success" active={statusFilter === "success"} onClick={() => setStatusFilter("success")} color="emerald" />
-            <FilterChip label="Failed" active={statusFilter === "failed"} onClick={() => setStatusFilter("failed")} color="red" />
+          <div className="flex flex-wrap gap-1.5 mb-4">
+            {(["all", "subscribed", "renewed", "paused", "cancelled"] as const).map((f) => (
+              <button
+                key={f}
+                onClick={() => setFilter(f)}
+                className={`rounded-full px-3 py-1 text-[11px] font-medium transition ${
+                  filter === f
+                    ? "bg-slate-900 text-white"
+                    : "bg-white text-slate-600 hover:bg-slate-100 border border-slate-200"
+                }`}
+              >
+                {f === "all" ? "All" : f.charAt(0).toUpperCase() + f.slice(1)}
+              </button>
+            ))}
+            <div className="w-px h-5 bg-slate-300 mx-1" />
+            {(["all", "success", "failed"] as const).map((s) => (
+              <button
+                key={s}
+                onClick={() => setStatusFilter(s)}
+                className={`rounded-full px-3 py-1 text-[11px] font-medium transition ${
+                  statusFilter === s
+                    ? s === "success" ? "bg-emerald-600 text-white" : s === "failed" ? "bg-red-600 text-white" : "bg-slate-900 text-white"
+                    : "bg-white text-slate-600 hover:bg-slate-100 border border-slate-200"
+                }`}
+              >
+                {s === "all" ? "All" : s.charAt(0).toUpperCase() + s.slice(1)}
+              </button>
+            ))}
           </div>
 
-          {/* Records */}
-          <div className="mt-6 space-y-3">
+          {/* List */}
+          <div className="space-y-2">
             {isLoading && records.length === 0 ? (
-              // Skeleton loading
               <>
                 <SkeletonRow />
                 <SkeletonRow />
                 <SkeletonRow />
               </>
             ) : filtered.length === 0 ? (
-              <div className="rounded-2xl border border-dashed border-slate-300 bg-white p-12 text-center">
-                <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-slate-100">
-                  <svg className="h-8 w-8 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
-                  </svg>
-                </div>
-                <p className="text-sm font-medium text-slate-700">No transactions yet</p>
-                <p className="mt-1 text-xs text-slate-500">Your AA UserOps will appear here once you start subscribing.</p>
-                <Link href="/plans" className="mt-4 inline-block rounded-lg bg-cyan-500 px-4 py-2 text-sm font-medium text-white hover:bg-cyan-400">
-                  Browse Plans
+              <div className="rounded-xl bg-white border border-slate-200 p-8 text-center">
+                <p className="text-sm text-slate-500">No transactions found</p>
+                <Link href="/plans" className="mt-2 inline-block text-xs text-cyan-600 hover:underline">
+                  Subscribe to a plan →
                 </Link>
               </div>
             ) : (
               filtered.map((record) => (
-                <div
-                  key={record.id}
-                  onClick={() => setSelectedRecord(selectedRecord === record.id ? null : record.id)}
-                  className={`cursor-pointer rounded-xl border bg-white p-4 transition hover:shadow-md ${
-                    selectedRecord === record.id ? "border-cyan-300 ring-1 ring-cyan-300" : "border-slate-200"
-                  }`}
-                >
-                  <div className="flex items-center gap-4">
-                    {record.service ? (
-                      <div className="relative h-10 w-10 flex-shrink-0 overflow-hidden rounded-lg">
-                        <Image src={record.service.logo} alt={record.service.name} fill className="object-contain" sizes="64px" />
-                      </div>
-                    ) : (
-                      <div className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-lg bg-slate-100">
-                        <span className="text-lg">📦</span>
-                      </div>
-                    )}
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2">
-                        <span className="text-sm font-semibold text-slate-900 capitalize">{record.type}</span>
-                        <StatusBadge status={record.status} />
-                        <ModeBadge mode={record.mode} />
-                      </div>
-                      <p className="mt-0.5 text-xs text-slate-500">
-                        {record.service ? `${record.service.name} • ${record.plan}` : "Unknown service"}
-                      </p>
-                    </div>
-                    <div className="flex items-center gap-3">
-                      <span className="text-xs text-slate-400">{record.timestamp.toLocaleString()}</span>
-                      <svg className={`h-4 w-4 text-slate-400 transition-transform ${selectedRecord === record.id ? "rotate-180" : ""}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                      </svg>
-                    </div>
-                  </div>
-
-                  {selectedRecord === record.id && (
-                    <div className="mt-4 border-t border-slate-100 pt-4">
-                      <div className="grid gap-3 sm:grid-cols-2">
-                        <DetailRow label="Transaction Hash" value={record.txHash} />
-                        <DetailRow label="UserOp Hash" value={record.userOpHash || "-"} />
-                        <DetailRow label="Gas Paid" value={record.gasPaid} />
-                        <DetailRow label="Mode" value={record.mode} />
-                        <DetailRow label="Timestamp" value={record.timestamp.toISOString()} />
-                        <div className="sm:col-span-2">
-                          <a
-                            href={`${explorerUrl}tx/${record.txHash}`}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="inline-flex items-center gap-2 rounded-lg bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-800"
-                            onClick={(e) => e.stopPropagation()}
-                          >
-                            <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
-                            </svg>
-                            View on Explorer
-                          </a>
-                        </div>
-                      </div>
-                    </div>
-                  )}
-                </div>
+                <HistoryRow key={record.id} record={record} />
               ))
             )}
           </div>
@@ -224,77 +151,133 @@ export default function HistoryPage() {
   );
 }
 
+function HistoryRow({ record }: { record: TxRecord }) {
+  const [expanded, setExpanded] = useState(false);
+
+  const typeColors: Record<string, { bg: string; text: string }> = {
+    subscribed: { bg: "bg-emerald-50", text: "text-emerald-700" },
+    renewed: { bg: "bg-blue-50", text: "text-blue-700" },
+    paused: { bg: "bg-amber-50", text: "text-amber-700" },
+    cancelled: { bg: "bg-red-50", text: "text-red-700" },
+    userOp: { bg: "bg-slate-100", text: "text-slate-600" },
+  };
+  const tc = typeColors[record.type] || typeColors.userOp;
+
+  return (
+    <div className="rounded-xl bg-white border border-slate-200 overflow-hidden">
+      {/* Main row */}
+      <div
+        onClick={() => setExpanded(!expanded)}
+        className="flex items-center gap-3 px-4 py-3 cursor-pointer hover:bg-slate-50 transition"
+      >
+        {/* Icon */}
+        <div className="flex-shrink-0">
+          {record.service ? (
+            <div className="relative h-9 w-9">
+              <Image src={record.service.logo} alt={record.service.name} fill className="object-contain" sizes="36px" />
+            </div>
+          ) : (
+            <div className="h-9 w-9 rounded-lg bg-slate-100 flex items-center justify-center">
+              <span className="text-sm">📦</span>
+            </div>
+          )}
+        </div>
+
+        {/* Content */}
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2">
+            <span className={`text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full ${tc.bg} ${tc.text}`}>
+              {record.type}
+            </span>
+            {record.status === "failed" && (
+              <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full bg-red-100 text-red-700">
+                Failed
+              </span>
+            )}
+          </div>
+          <p className="text-sm font-medium text-slate-900 mt-0.5 truncate">
+            {record.service ? `${record.service.name} — ${record.plan}` : record.plan}
+          </p>
+        </div>
+
+        {/* Right side */}
+        <div className="flex-shrink-0 text-right">
+          <p className="text-[10px] text-slate-400">#{record.blockNumber.toLocaleString()}</p>
+          <p className="text-[11px] text-slate-500">{formatTime(record.timestamp)}</p>
+        </div>
+
+        {/* Chevron */}
+        <svg
+          className={`h-4 w-4 text-slate-400 flex-shrink-0 transition-transform ${expanded ? "rotate-180" : ""}`}
+          fill="none" viewBox="0 0 24 24" stroke="currentColor"
+        >
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+        </svg>
+      </div>
+
+      {/* Expanded */}
+      {expanded && (
+        <div className="px-4 pb-3 pt-1 border-t border-slate-100">
+          <div className="grid gap-2 sm:grid-cols-2 text-xs">
+            <div>
+              <span className="text-slate-400">Tx:</span>{" "}
+              <a href={`${explorerUrl}tx/${record.txHash}`} target="_blank" rel="noopener noreferrer" className="font-mono text-cyan-600 hover:underline">
+                {record.txHash.slice(0, 18)}...{record.txHash.slice(-4)}
+              </a>
+            </div>
+            {record.userOpHash && (
+              <div>
+                <span className="text-slate-400">UserOp:</span>{" "}
+                <span className="font-mono text-slate-600">{record.userOpHash.slice(0, 18)}...{record.userOpHash.slice(-4)}</span>
+              </div>
+            )}
+            <div>
+              <span className="text-slate-400">Time:</span>{" "}
+              <span className="text-slate-600">{record.timestamp.toLocaleString()}</span>
+            </div>
+          </div>
+          <a
+            href={`${explorerUrl}tx/${record.txHash}`}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="mt-2 inline-flex items-center gap-1 text-[11px] text-cyan-600 hover:underline"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+            </svg>
+            View on Explorer
+          </a>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function formatTime(date: Date): string {
+  const now = new Date();
+  const diff = now.getTime() - date.getTime();
+  const mins = Math.floor(diff / 60000);
+  const hours = Math.floor(diff / 3600000);
+  const days = Math.floor(diff / 86400000);
+  if (mins < 1) return "just now";
+  if (mins < 60) return `${mins}m ago`;
+  if (hours < 24) return `${hours}h ago`;
+  if (days < 7) return `${days}d ago`;
+  return date.toLocaleDateString();
+}
+
 function SkeletonRow() {
   return (
-    <div className="rounded-xl border border-slate-200 bg-white p-4 animate-pulse">
-      <div className="flex items-center gap-4">
-        <div className="h-10 w-10 rounded-lg bg-slate-200" />
-        <div className="flex-1 space-y-2">
-          <div className="h-4 w-32 rounded bg-slate-200" />
-          <div className="h-3 w-24 rounded bg-slate-200" />
+    <div className="rounded-xl bg-white border border-slate-200 p-3 animate-pulse">
+      <div className="flex items-center gap-3">
+        <div className="h-9 w-9 rounded-lg bg-slate-200" />
+        <div className="flex-1 space-y-1.5">
+          <div className="h-3 w-20 rounded bg-slate-200" />
+          <div className="h-3.5 w-32 rounded bg-slate-200" />
         </div>
-        <div className="h-3 w-20 rounded bg-slate-200" />
+        <div className="h-3 w-14 rounded bg-slate-200" />
       </div>
-    </div>
-  );
-}
-
-function StatBox({ label, value, color }: { label: string; value: number; color: string }) {
-  return (
-    <div className="rounded-xl border border-slate-200 bg-white p-4">
-      <div className={`mb-2 inline-flex h-8 w-8 items-center justify-center rounded-lg ${color} text-white text-sm font-bold`}>
-        {value}
-      </div>
-      <p className="text-xs font-medium text-slate-500">{label}</p>
-    </div>
-  );
-}
-
-function FilterChip({ label, active, onClick, color }: { label: string; active: boolean; onClick: () => void; color?: string }) {
-  const base = "cursor-pointer rounded-full px-3 py-1.5 text-xs font-medium transition";
-  if (active) {
-    const bg = color === "emerald" ? "bg-emerald-100 text-emerald-700" :
-               color === "amber" ? "bg-amber-100 text-amber-700" :
-               color === "red" ? "bg-red-100 text-red-700" :
-               "bg-slate-900 text-white";
-    return <span className={`${base} ${bg}`} onClick={onClick}>{label}</span>;
-  }
-  return <span className={`${base} bg-slate-100 text-slate-600 hover:bg-slate-200`} onClick={onClick}>{label}</span>;
-}
-
-function StatusBadge({ status }: { status: string }) {
-  const styles: Record<string, string> = {
-    success: "bg-emerald-100 text-emerald-700",
-    pending: "bg-amber-100 text-amber-700",
-    failed: "bg-red-100 text-red-700",
-  };
-  return (
-    <span className={`inline-flex rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider ${styles[status] || "bg-slate-100 text-slate-600"}`}>
-      {status}
-    </span>
-  );
-}
-
-function ModeBadge({ mode }: { mode: string }) {
-  const styles: Record<string, string> = {
-    sponsor: "bg-violet-100 text-violet-700",
-    erc20: "bg-amber-100 text-amber-700",
-    "multi-token": "bg-cyan-100 text-cyan-700",
-  };
-  return (
-    <span className={`inline-flex rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider ${styles[mode] || "bg-slate-100 text-slate-600"}`}>
-      {mode}
-    </span>
-  );
-}
-
-function DetailRow({ label, value }: { label: string; value: string }) {
-  return (
-    <div>
-      <p className="text-[10px] font-medium uppercase tracking-wider text-slate-400">{label}</p>
-      <p className="text-sm font-mono text-slate-700">
-        {value.length > 42 ? `${value.slice(0, 20)}...${value.slice(-8)}` : value}
-      </p>
     </div>
   );
 }

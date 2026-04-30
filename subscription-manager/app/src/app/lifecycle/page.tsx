@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState, useCallback } from "react";
 import Image from "next/image";
+import Link from "next/link";
 import { useAuth } from "@/components/AuthContext";
 import AuthGuard from "@/components/AuthGuard";
 import { getTierByPlanId } from "@/lib/services";
@@ -23,7 +24,6 @@ interface SubscriptionCard {
   daysUntilRenewal: number;
 }
 
-// Client-side cache
 let subsCache: { rows: OnchainSubscriptionRow[]; timestamp: number } | null = null;
 const CACHE_TTL_MS = 15000;
 
@@ -33,17 +33,14 @@ export default function LifecyclePage() {
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [runningAction, setRunningAction] = useState<{ id: number; action: ActionType } | null>(null);
-  const [status, setStatus] = useState<string>("");
-  const [lastUpdated, setLastUpdated] = useState<string>("");
+  const [actionResult, setActionResult] = useState<{ type: "success" | "error"; message: string; txHash?: string } | null>(null);
 
-  // Load subscriptions with cache
   const refresh = useCallback(async (force = false) => {
     if (!force && subsCache && Date.now() - subsCache.timestamp < CACHE_TTL_MS) {
       setRows(subsCache.rows);
       setIsLoading(false);
       return;
     }
-
     setIsRefreshing(true);
     try {
       const res = await fetch("/api/subscriptions/status");
@@ -52,9 +49,8 @@ export default function LifecyclePage() {
       const data = json.rows || [];
       subsCache = { rows: data, timestamp: Date.now() };
       setRows(data);
-      setLastUpdated(new Date().toLocaleTimeString());
     } catch (e) {
-      setStatus("Failed to load subscriptions");
+      setActionResult({ type: "error", message: "Failed to load subscriptions" });
     } finally {
       setIsRefreshing(false);
       setIsLoading(false);
@@ -87,8 +83,7 @@ export default function LifecyclePage() {
 
   async function runAction(card: SubscriptionCard, action: ActionType) {
     setRunningAction({ id: card.row.subscriptionId, action });
-    setStatus(`Processing ${action}...`);
-
+    setActionResult(null);
     try {
       const provider = await connectWeb3Auth();
       const accounts = await getProviderAccounts(provider);
@@ -105,27 +100,23 @@ export default function LifecyclePage() {
         tokenAmount: card.row.planPriceWei,
       });
 
-      const telemetryRow = {
-        action: result.action,
-        mode: result.mode,
-        wallet,
-        token: result.token,
-        subscriptionId: result.subscriptionId,
-        uoHash: result.uoHash,
-        txHash: result.txHash,
-        startedAt: result.startedAt,
-        confirmedAt: result.confirmedAt,
-        result: result.result,
-      };
-      appendTelemetryRow(telemetryRow);
-      await appendTelemetryRowRemote(telemetryRow);
+      appendTelemetryRow({
+        action: result.action, mode: result.mode, wallet, token: result.token,
+        subscriptionId: result.subscriptionId, uoHash: result.uoHash, txHash: result.txHash,
+        startedAt: result.startedAt, confirmedAt: result.confirmedAt, result: result.result,
+      });
+      await appendTelemetryRowRemote({
+        action: result.action, mode: result.mode, wallet, token: result.token,
+        subscriptionId: result.subscriptionId, uoHash: result.uoHash, txHash: result.txHash,
+        startedAt: result.startedAt, confirmedAt: result.confirmedAt, result: result.result,
+      });
 
-      setStatus(`${action} successful! Tx: ${result.txHash?.slice(0, 12) || "unknown"}...`);
-      subsCache = null; // Invalidate cache
+      setActionResult({ type: "success", message: `${action} successful`, txHash: result.txHash || undefined });
+      subsCache = null;
       await refresh(true);
     } catch (e) {
       const msg = e instanceof Error ? e.message : "Action failed";
-      setStatus(`${action} failed: ${msg}`);
+      setActionResult({ type: "error", message: `${action} failed: ${msg}` });
     } finally {
       setRunningAction(null);
     }
@@ -133,64 +124,60 @@ export default function LifecyclePage() {
 
   return (
     <AuthGuard>
-      <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100">
+      <div className="min-h-screen bg-slate-50">
         {/* Header */}
-        <div className="border-b border-slate-200 bg-white">
-          <div className="mx-auto max-w-6xl px-4 py-6">
+        <div className="bg-white border-b border-slate-200">
+          <div className="mx-auto max-w-4xl px-4 py-5">
             <div className="flex items-center justify-between">
               <div>
-                <h1 className="text-2xl font-bold text-slate-900">My Subscriptions</h1>
-                <p className="mt-1 text-sm text-slate-500">
-                  Manage your on-chain subscriptions. Renew, pause, or cancel anytime.
-                </p>
+                <h1 className="text-xl font-bold text-slate-900">My Subscriptions</h1>
+                <p className="text-xs text-slate-500 mt-0.5">Manage your active plans</p>
               </div>
-              <div className="flex items-center gap-3">
-                {lastUpdated && (
-                  <span className="text-xs text-slate-400">Updated {lastUpdated}</span>
-                )}
-                <button
-                  onClick={() => refresh(true)}
-                  disabled={isRefreshing}
-                  className="rounded-lg bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-800 disabled:opacity-50"
-                >
-                  {isRefreshing ? "⟳ Refreshing..." : "⟳ Refresh"}
-                </button>
-              </div>
+              <button
+                onClick={() => refresh(true)}
+                disabled={isRefreshing}
+                className="text-xs font-medium text-slate-600 hover:text-slate-900 disabled:opacity-40"
+              >
+                {isRefreshing ? "Loading..." : "Refresh"}
+              </button>
             </div>
           </div>
         </div>
 
-        <div className="mx-auto max-w-6xl px-4 py-6">
-          {/* Status message */}
-          {status && (
-            <div className={`mb-6 rounded-xl border p-4 ${status.includes("failed") ? "border-red-200 bg-red-50 text-red-700" : "border-emerald-200 bg-emerald-50 text-emerald-700"}`}>
-              <p className="text-sm font-medium">{status}</p>
+        <div className="mx-auto max-w-4xl px-4 py-4">
+          {/* Result banner */}
+          {actionResult && (
+            <div className={`mb-3 rounded-lg border p-2.5 ${actionResult.type === "error" ? "border-red-200 bg-red-50" : "border-emerald-200 bg-emerald-50"}`}>
+              <div className="flex items-center justify-between">
+                <p className={`text-xs font-medium ${actionResult.type === "error" ? "text-red-700" : "text-emerald-700"}`}>
+                  {actionResult.message}
+                </p>
+                <button onClick={() => setActionResult(null)} className="text-xs text-slate-400 hover:text-slate-600">✕</button>
+              </div>
+              {actionResult.txHash && (
+                <a href={`${explorerUrl}tx/${actionResult.txHash}`} target="_blank" rel="noopener noreferrer" className="mt-1 inline-block text-[11px] text-cyan-600 hover:underline">
+                  View: {actionResult.txHash.slice(0, 12)}...{actionResult.txHash.slice(-6)}
+                </a>
+              )}
             </div>
           )}
 
           {/* Cards */}
           {isLoading ? (
-            <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-              <SkeletonCard />
-              <SkeletonCard />
-              <SkeletonCard />
+            <div className="grid gap-3 md:grid-cols-2">
+              <SkeletonCard /><SkeletonCard />
             </div>
           ) : !smartAccountAddress ? (
-            <div className="rounded-2xl border border-slate-200 bg-white p-12 text-center">
-              <p className="text-sm text-slate-600">Connect your wallet to view subscriptions.</p>
+            <div className="rounded-xl bg-white border border-slate-200 p-8 text-center">
+              <p className="text-sm text-slate-500">Connect your wallet</p>
             </div>
           ) : cards.length === 0 ? (
-            <div className="rounded-2xl border border-dashed border-slate-300 bg-white p-12 text-center">
-              <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-slate-100">
-                <svg className="h-8 w-8 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M15 5v2m0 4v2m0 4v2M5 5a2 2 0 00-2 2v3a2 2 0 110 4v3a2 2 0 002 2h14a2 2 0 002-2v-3a2 2 0 110-4V7a2 2 0 00-2-2H5z" />
-                </svg>
-              </div>
-              <p className="text-sm font-medium text-slate-700">No active subscriptions</p>
-              <p className="mt-1 text-xs text-slate-500">Subscribe to a plan to manage it here.</p>
+            <div className="rounded-xl bg-white border border-slate-200 p-8 text-center">
+              <p className="text-sm text-slate-500">No subscriptions yet</p>
+              <Link href="/plans" className="mt-2 inline-block text-xs text-cyan-600 hover:underline">Browse plans →</Link>
             </div>
           ) : (
-            <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+            <div className="grid gap-3 md:grid-cols-2">
               {cards.map((card) => (
                 <SubscriptionCardView
                   key={card.row.subscriptionId}
@@ -209,37 +196,27 @@ export default function LifecyclePage() {
 
 function SkeletonCard() {
   return (
-    <div className="rounded-xl border border-slate-200 bg-white p-5 animate-pulse">
-      <div className="flex items-start justify-between">
-        <div className="flex items-center gap-3">
-          <div className="h-12 w-12 rounded-lg bg-slate-200" />
-          <div className="space-y-2">
-            <div className="h-4 w-24 rounded bg-slate-200" />
-            <div className="h-3 w-16 rounded bg-slate-200" />
-          </div>
+    <div className="rounded-xl bg-white border border-slate-200 p-4 animate-pulse">
+      <div className="flex items-center gap-3">
+        <div className="h-10 w-10 rounded-lg bg-slate-200" />
+        <div className="flex-1 space-y-1.5">
+          <div className="h-3.5 w-24 rounded bg-slate-200" />
+          <div className="h-2.5 w-16 rounded bg-slate-200" />
         </div>
-        <div className="h-6 w-16 rounded-full bg-slate-200" />
-      </div>
-      <div className="my-4 border-t border-slate-100" />
-      <div className="space-y-2">
-        <div className="flex justify-between"><div className="h-3 w-20 rounded bg-slate-200" /><div className="h-3 w-12 rounded bg-slate-200" /></div>
-        <div className="flex justify-between"><div className="h-3 w-20 rounded bg-slate-200" /><div className="h-3 w-12 rounded bg-slate-200" /></div>
-        <div className="flex justify-between"><div className="h-3 w-20 rounded bg-slate-200" /><div className="h-3 w-12 rounded bg-slate-200" /></div>
+        <div className="h-5 w-14 rounded-full bg-slate-200" />
       </div>
       <div className="mt-3 h-1.5 w-full rounded-full bg-slate-200" />
-      <div className="mt-4 grid grid-cols-3 gap-2">
-        <div className="h-10 rounded-lg bg-slate-200" />
-        <div className="h-10 rounded-lg bg-slate-200" />
-        <div className="h-10 rounded-lg bg-slate-200" />
+      <div className="mt-3 grid grid-cols-3 gap-2">
+        <div className="h-8 rounded-lg bg-slate-200" />
+        <div className="h-8 rounded-lg bg-slate-200" />
+        <div className="h-8 rounded-lg bg-slate-200" />
       </div>
     </div>
   );
 }
 
 function SubscriptionCardView({
-  card,
-  isRunning,
-  onAction,
+  card, isRunning, onAction,
 }: {
   card: SubscriptionCard;
   isRunning: boolean;
@@ -247,140 +224,86 @@ function SubscriptionCardView({
 }) {
   const { row, service, isOverdue, daysUntilRenewal } = card;
   const isActive = row.active && !row.paused;
+  const progressPct = Math.max(0, Math.min(100, (30 - daysUntilRenewal) / 30 * 100));
 
   return (
-    <div className="rounded-xl border border-slate-200 bg-white p-5 transition hover:shadow-lg">
+    <div className="rounded-xl bg-white border border-slate-200 p-4">
       {/* Header */}
-      <div className="flex items-start justify-between">
-        <div className="flex items-center gap-3">
-          {service ? (
-            <div className="relative h-12 w-12 flex-shrink-0 overflow-hidden rounded-lg">
-              <Image src={service.service.logo} alt={service.service.name} fill className="object-contain" sizes="64px" />
-            </div>
-          ) : (
-            <div className="flex h-12 w-12 flex-shrink-0 items-center justify-center rounded-lg bg-slate-100">
-              <span className="text-xl">📦</span>
-            </div>
-          )}
-          <div>
-            <h3 className="text-sm font-bold text-slate-900">
-              {service ? service.service.name : `Plan ${row.planId}`}
-            </h3>
-            <p className="text-xs text-slate-500">{service?.tier.name || "Unknown"}</p>
+      <div className="flex items-center gap-3">
+        {service ? (
+          <div className="relative h-10 w-10 flex-shrink-0">
+            <Image src={service.service.logo} alt={service.service.name} fill className="object-contain" sizes="40px" />
           </div>
+        ) : (
+          <div className="h-10 w-10 rounded-lg bg-slate-100 flex items-center justify-center flex-shrink-0">
+            <span className="text-lg">📦</span>
+          </div>
+        )}
+        <div className="flex-1 min-w-0">
+          <h3 className="text-sm font-bold text-slate-900 truncate">{service ? service.service.name : `Plan ${row.planId}`}</h3>
+          <p className="text-[11px] text-slate-500">{service?.tier.name || "Unknown"}</p>
         </div>
         <StateBadge active={isActive} paused={row.paused} />
       </div>
 
-      {/* Divider */}
-      <div className="my-4 border-t border-slate-100" />
-
-      {/* Details */}
-      <div className="space-y-2">
-        <div className="flex items-center justify-between text-xs">
-          <span className="text-slate-500">Subscription ID</span>
-          <span className="font-mono text-slate-700">#{row.subscriptionId}</span>
-        </div>
-        <div className="flex items-center justify-between text-xs">
-          <span className="text-slate-500">Interval</span>
-          <span className="text-slate-700">{row.planIntervalSeconds >= 86400 ? `${Math.floor(row.planIntervalSeconds/86400)} days` : `${Math.floor(row.planIntervalSeconds/3600)} hours`}</span>
-        </div>
-        <div className="flex items-center justify-between text-xs">
-          <span className="text-slate-500">Next Renewal</span>
-          <span className={`font-medium ${isOverdue ? "text-red-600" : daysUntilRenewal <= 3 ? "text-amber-600" : "text-slate-700"}`}>
-            {isOverdue ? "Overdue" : `${daysUntilRenewal} days`}
+      {/* Progress */}
+      <div className="mt-3">
+        <div className="flex justify-between text-[10px] mb-1">
+          <span className="text-slate-500">{isOverdue ? "Overdue" : `${daysUntilRenewal} days left`}</span>
+          <span className={isOverdue ? "text-red-600" : daysUntilRenewal <= 3 ? "text-amber-600" : "text-slate-600"}>
+            {service?.tier.priceLabel || `${row.planPriceWei} wei`}
           </span>
         </div>
-        <div className="flex items-center justify-between text-xs">
-          <span className="text-slate-500">Price</span>
-          <span className="text-slate-700">{service ? service.tier.priceLabel : `${row.planPriceWei} wei`}</span>
+        <div className="h-1.5 w-full rounded-full bg-slate-100">
+          <div className={`h-1.5 rounded-full transition-all ${isOverdue ? "bg-red-500" : daysUntilRenewal <= 3 ? "bg-amber-500" : "bg-emerald-500"}`}
+            style={{ width: `${progressPct}%` }} />
         </div>
       </div>
 
-      {/* Progress bar */}
-      <div className="mt-3">
-        <div className="h-1.5 w-full rounded-full bg-slate-100">
-          <div
-            className={`h-1.5 rounded-full transition-all ${isOverdue ? "bg-red-500" : daysUntilRenewal <= 3 ? "bg-amber-500" : "bg-emerald-500"}`}
-            style={{ width: `${Math.max(0, Math.min(100, (30 - daysUntilRenewal) / 30 * 100))}%` }}
-          />
+      {/* Details */}
+      <div className="mt-2.5 grid grid-cols-2 gap-x-4 gap-y-1 text-[11px]">
+        <div><span className="text-slate-400">ID:</span> <span className="font-mono text-slate-700">#{row.subscriptionId}</span></div>
+        <div><span className="text-slate-400">Renew:</span> <span className="text-slate-700">{card.nextRenewalDate.toLocaleDateString()}</span></div>
+        <div><span className="text-slate-400">Interval:</span> <span className="text-slate-700">{Math.floor(row.planIntervalSeconds/86400)}d</span></div>
+        <div>
+          <a href={`${explorerUrl}address/${defaultSubscriptionManagerAddress}`} target="_blank" rel="noopener noreferrer"
+            className="text-cyan-600 hover:underline inline-flex items-center gap-0.5">
+            <svg className="h-2.5 w-2.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+            </svg>
+            Contract
+          </a>
         </div>
       </div>
 
       {/* Actions */}
-      <div className="mt-4 grid grid-cols-3 gap-2">
-        <ActionButton
-          label="Renew"
-          icon="↻"
-          color="cyan"
-          disabled={isRunning || !isActive}
-          onClick={() => onAction("renew")}
-        />
-        <ActionButton
-          label={row.paused ? "Resume" : "Pause"}
-          icon={row.paused ? "▶" : "⏸"}
-          color="amber"
-          disabled={isRunning}
-          onClick={() => onAction("pause")}
-        />
-        <ActionButton
-          label="Cancel"
-          icon="✕"
-          color="red"
-          disabled={isRunning}
-          onClick={() => onAction("cancel")}
-        />
+      <div className="mt-3 grid grid-cols-3 gap-2">
+        <ActionButton label="Renew" icon="↻" color="cyan" disabled={isRunning || !isActive} onClick={() => onAction("renew")} />
+        <ActionButton label={row.paused ? "Resume" : "Pause"} icon={row.paused ? "▶" : "⏸"} color="amber" disabled={isRunning} onClick={() => onAction("pause")} />
+        <ActionButton label="Cancel" icon="✕" color="red" disabled={isRunning} onClick={() => onAction("cancel")} />
       </div>
     </div>
   );
 }
 
 function StateBadge({ active, paused }: { active: boolean; paused: boolean }) {
-  if (paused) {
-    return (
-      <span className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-2 py-1 text-[10px] font-bold uppercase tracking-wider text-amber-700">
-        <span className="h-1.5 w-1.5 rounded-full bg-amber-500" />
-        Paused
-      </span>
-    );
-  }
-  if (active) {
-    return (
-      <span className="inline-flex items-center gap-1 rounded-full bg-emerald-100 px-2 py-1 text-[10px] font-bold uppercase tracking-wider text-emerald-700">
-        <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
-        Active
-      </span>
-    );
-  }
-  return (
-    <span className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-2 py-1 text-[10px] font-bold uppercase tracking-wider text-slate-600">
-      <span className="h-1.5 w-1.5 rounded-full bg-slate-400" />
-      Inactive
-    </span>
-  );
+  if (paused) return <span className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-bold text-amber-700"><span className="h-1 w-1 rounded-full bg-amber-500" />Paused</span>;
+  if (active) return <span className="inline-flex items-center gap-1 rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-bold text-emerald-700"><span className="h-1 w-1 rounded-full bg-emerald-500" />Active</span>;
+  return <span className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-bold text-slate-600"><span className="h-1 w-1 rounded-full bg-slate-400" />Inactive</span>;
 }
 
 function ActionButton({ label, icon, color, disabled, onClick }: {
-  label: string;
-  icon: string;
-  color: "cyan" | "amber" | "red";
-  disabled: boolean;
-  onClick: () => void;
+  label: string; icon: string; color: "cyan" | "amber" | "red"; disabled: boolean; onClick: () => void;
 }) {
   const colors = {
     cyan: "border-cyan-200 bg-cyan-50 text-cyan-700 hover:bg-cyan-100",
     amber: "border-amber-200 bg-amber-50 text-amber-700 hover:bg-amber-100",
     red: "border-red-200 bg-red-50 text-red-700 hover:bg-red-100",
   };
-
   return (
-    <button
-      onClick={onClick}
-      disabled={disabled}
-      className={`flex flex-col items-center gap-1 rounded-lg border px-3 py-2 text-xs font-medium transition disabled:opacity-50 ${colors[color]}`}
-    >
-      <span className="text-base">{icon}</span>
-      <span>{label}</span>
+    <button onClick={onClick} disabled={disabled}
+      className={`flex items-center justify-center gap-1 rounded-lg border px-2 py-1.5 text-[11px] font-medium transition disabled:opacity-40 ${colors[color]}`}>
+      <span>{icon}</span><span>{label}</span>
     </button>
   );
 }

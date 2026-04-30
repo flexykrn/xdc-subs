@@ -3,6 +3,7 @@
 /subscription-manager/app/.env
 /subscription-manager/contracts/.env
 .env
+documentation
 .env.local
 fluidflow
 
