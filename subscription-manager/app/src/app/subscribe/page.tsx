@@ -100,20 +100,18 @@ export default function SubscribePage() {
     checkNative();
   }, [smartAccountAddress]);
 
-  // Payment mode auto-selection
+  // Payment mode auto-selection — ONLY on initial load, don't override user choice
   useEffect(() => {
-    if (!selectedTier || !isAuthenticated) return;
+    if (!selectedTier || !isAuthenticated || mode !== "sponsor") return; // Don't override if user already selected
     
     const hasNative = nativeBalance !== null && Number(nativeBalance) > 0;
     const hasTokens = balance !== null && Number(balance) >= Number(selectedTier.tier.price);
     
-    // If user has 0 tXDC but has service tokens, auto-select ERC20 mode
+    // Auto-select ONLY on first load when user hasn't manually chosen
     if (!hasNative && hasTokens) {
       setMode("erc20");
-    } else if (hasNative) {
-      setMode("sponsor");
     }
-  }, [nativeBalance, balance, selectedTier, isAuthenticated]);
+  }, [nativeBalance, balance, selectedTier, isAuthenticated]); // Removed mode from deps to prevent override
 
   const handleSubscribe = async () => {
     if (!selectedTier) return;
