@@ -5,7 +5,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useAuth } from "./AuthContext";
 
-import { getEtherspotPrime, getSmartAccountAddress } from "@/lib/etherspot";
+import { getCounterFactualAddress } from "@/lib/aa-core";
 import {
   connectWeb3Auth,
   disconnectWeb3Auth,
@@ -19,7 +19,7 @@ export default function NavBar() {
   const [isConnecting, setIsConnecting] = useState(false);
   const [connectError, setConnectError] = useState("");
   const [copied, setCopied] = useState(false);
-  const { isAuthenticated, login, logout, eoaAddress } = useAuth();
+  const { isAuthenticated, login, logout, eoaAddress, smartAccountAddress, setUser } = useAuth();
 
   const publicLinks = [
     { href: "/plans", label: "Plans" },
@@ -43,23 +43,15 @@ export default function NavBar() {
       const provider = await connectWeb3Auth();
       const accounts = await getProviderAccounts(provider);
       const privateKey = await getProviderPrivateKey(provider);
-      const primeSdk = await getEtherspotPrime(privateKey);
-      const smartAccountAddress = await getSmartAccountAddress(primeSdk);
-
-      // Update auth context
       const eoa = accounts[0] || "";
-      // We need to update auth context - but setUser is not destructured
-      // Let's use a workaround by updating localStorage and reloading
-      localStorage.setItem(
-        "aa-auth",
-        JSON.stringify({
-          isAuthenticated: true,
-          eoaAddress: eoa,
-          smartAccountAddress: smartAccountAddress,
-          nativeBalance: "0",
-        })
-      );
-      window.location.reload();
+      if (!eoa) {
+        throw new Error("No wallet account returned by Web3Auth.");
+      }
+
+      const saAddress = await getCounterFactualAddress(eoa as `0x${string}`);
+
+      setUser({ eoaAddress: saAddress, smartAccountAddress: saAddress, nativeBalance: "0" });
+      login();
     } catch (err) {
       console.error("Connect error:", err);
       const msg = err instanceof Error ? err.message : "Connection failed";
@@ -67,7 +59,7 @@ export default function NavBar() {
     } finally {
       setIsConnecting(false);
     }
-  }, [isConnecting]);
+  }, [isConnecting, login, setUser]);
 
   const handleDisconnect = useCallback(async () => {
     try {
@@ -119,8 +111,8 @@ export default function NavBar() {
 
           {isAuthenticated ? (
             <>
-              <div className="ml-2 px-3 py-2 rounded-lg bg-slate-100 text-xs font-mono text-slate-700 cursor-pointer hover:bg-slate-200 transition-colors" onClick={() => { if (eoaAddress) { navigator.clipboard.writeText(eoaAddress); setCopied(true); setTimeout(() => setCopied(false), 2000); } }} title="Click to copy address">
-                {copied ? "Copied!" : (eoaAddress ? `${eoaAddress.slice(0, 6)}...${eoaAddress.slice(-4)}` : "Connected")}
+              <div className="ml-2 px-3 py-2 rounded-lg bg-slate-100 text-xs font-mono text-slate-700 cursor-pointer hover:bg-slate-200 transition-colors" onClick={() => { if (smartAccountAddress) { navigator.clipboard.writeText(smartAccountAddress); setCopied(true); setTimeout(() => setCopied(false), 2000); } }} title="Click to copy address">
+                {copied ? "Copied!" : (smartAccountAddress ? `${smartAccountAddress.slice(0, 6)}...${smartAccountAddress.slice(-4)}` : "Connected")}
               </div>
               <button
                 onClick={handleDisconnect}

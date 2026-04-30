@@ -5,7 +5,7 @@ import Image from "next/image";
 import Link from "next/link";
 
 import { getTokenBalance, getTokenInfo, getNativeBalance } from "@/lib/blockchain";
-import { getEtherspotPrime, getSmartAccountAddress } from "@/lib/etherspot";
+import { getCounterFactualAddress } from "@/lib/aa-core";
 import {
   connectWeb3Auth,
   disconnectWeb3Auth,
@@ -64,11 +64,11 @@ export default function DashboardPage() {
     setSummaryLoading(true);
 
     try {
-      // Native balance
-      const native = await getNativeBalance(eoaAddressLocal);
+      // Native balance of smart account
+      const native = await getNativeBalance(smartAccountAddress || eoaAddressLocal);
       setNativeBalance(native);
 
-      // Token balances for all 6 services
+      // Token balances for all 6 services — check BOTH addresses
       const balances: TokenBalance[] = [];
       const entries = [
         { key: "netflix", service: "Netflix", logo: "/services/netflix.png" },
@@ -82,8 +82,9 @@ export default function DashboardPage() {
       for (const entry of entries) {
         const addr = TOKEN_ADDRESSES[entry.key as keyof typeof TOKEN_ADDRESSES];
         if (addr) {
+          // AA best practice: Smart Account holds all assets
           const [bal, info] = await Promise.all([
-            getTokenBalance(addr, eoaAddressLocal),
+            getTokenBalance(addr, smartAccountAddress || eoaAddressLocal),
             getTokenInfo(addr),
           ]);
           balances.push({
@@ -96,8 +97,10 @@ export default function DashboardPage() {
       }
       setTokenBalances(balances);
 
-      // On-chain subscriptions
-      const subs = await getUserSubscriptions(eoaAddressLocal);
+      // On-chain subscriptions — check Smart Account only
+      const subs = smartAccountAddress 
+        ? await getUserSubscriptions(smartAccountAddress)
+        : [];
       setSubscriptions(subs);
 
       // User's own on-chain summary (NOT global)
@@ -146,16 +149,15 @@ export default function DashboardPage() {
     try {
       const provider = await connectWeb3Auth();
       const accounts = await getProviderAccounts(provider);
+      const eoa = accounts[0] || "";
       const privateKey = await getProviderPrivateKey(provider);
-      const primeSdk = await getEtherspotPrime(privateKey);
-      const smartAccountAddress = await getSmartAccountAddress(primeSdk);
+      const smartAccountAddress = await getCounterFactualAddress(eoa as `0x${string}`);
       const nativeBalance = await getNativeBalance(smartAccountAddress);
 
-      const eoa = accounts[0];
       setEoaAddress(eoa);
       setSmartAccountAddress(smartAccountAddress);
       setUser({
-        eoaAddress: eoa,
+        eoaAddress: smartAccountAddress,
         smartAccountAddress: smartAccountAddress,
         nativeBalance: nativeBalance,
       });
@@ -210,25 +212,15 @@ export default function DashboardPage() {
         </div>
       ) : null}
 
-      {/* Wallet Cards */}
+      {/* Wallet Cards - Only show Smart Account */}
       {isAuthenticated && (
-        <div className="grid gap-3 md:grid-cols-3">
+        <div className="grid gap-3 md:grid-cols-2">
           <div className="rounded-2xl border border-slate-200 bg-white p-5">
-            <p className="text-xs font-medium text-slate-400 uppercase tracking-wider">EOA Address</p>
+            <p className="text-xs font-medium text-slate-400 uppercase tracking-wider">Account</p>
             <p className="mt-2 text-lg font-bold text-slate-900 font-mono">
-              {eoaAddressLocal ? `${eoaAddressLocal.slice(0, 8)}...${eoaAddressLocal.slice(-6)}` : "—"}
+              {smartAccountAddress ? `${smartAccountAddress.slice(0, 8)}...${smartAccountAddress.slice(-6)}` : "—"}
             </p>
-            <p className="mt-1 text-xs text-slate-500">MPC Wallet via Web3Auth</p>
-          </div>
-
-          <div className="rounded-2xl border border-slate-200 bg-white p-5">
-            <p className="text-xs font-medium text-slate-400 uppercase tracking-wider">Smart Account</p>
-            <p className="mt-2 text-lg font-bold text-slate-900 font-mono">
-              {smartAccountAddress && !smartAccountAddress.includes("pending")
-                ? `${smartAccountAddress.slice(0, 8)}...${smartAccountAddress.slice(-6)}`
-                : smartAccountAddress || "—"}
-            </p>
-            <p className="mt-1 text-xs text-slate-500">ERC-7579 Modular Account</p>
+            <p className="mt-1 text-xs text-slate-500">ERC-4337 Smart Account</p>
           </div>
 
           <div className="rounded-2xl border border-slate-200 bg-white p-5">

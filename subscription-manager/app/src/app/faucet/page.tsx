@@ -4,6 +4,7 @@ import { useState } from "react";
 import Image from "next/image";
 
 import { SERVICES } from "@/lib/services";
+import { getCounterFactualAddress } from "@/lib/aa-core";
 import { connectWeb3Auth, getProviderAccounts, getProviderPrivateKey } from "@/lib/web3auth";
 import AuthGuard from "@/components/AuthGuard";
 
@@ -25,11 +26,13 @@ export default function FaucetPage() {
     try {
       const provider = await connectWeb3Auth();
       const accounts = await getProviderAccounts(provider);
-      const userAddress = accounts[0];
+      const eoa = accounts[0];
 
-      if (!userAddress) {
+      if (!eoa) {
         throw new Error("Please connect your wallet first");
       }
+
+      const smartAccountAddress = await getCounterFactualAddress(eoa as `0x${string}`);
 
       const newResults: { service: string; status: string; txHash?: string; error?: string }[] = [];
 
@@ -40,7 +43,7 @@ export default function FaucetPage() {
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
               tokenAddress: service.tokenAddress,
-              to: userAddress,
+              to: smartAccountAddress,
               amount: MINT_AMOUNT,
             }),
           });
