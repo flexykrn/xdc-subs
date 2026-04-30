@@ -37,7 +37,7 @@ In Render dashboard → your service → **Environment** tab, add these:
 |----------|-------|--------------|
 | `NEXT_PUBLIC_WEB3AUTH_CLIENT_ID` | `BA...` | Web3Auth dashboard |
 | `NEXT_PUBLIC_ARKA_API_KEY` | `etherspot_...` | Etherspot dashboard |
-| `NEXT_PUBLIC_BUNDLER_URL` | `https://testnet-rpc.etherspot.io/v1/51?api-key=...` | Etherspot dashboard |
+| `NEXT_PUBLIC_BUNDLER_URL` | Bundler endpoint that supports XDC Apothem (chain 51) | Your bundler provider |
 
 ### Server-side secrets (NEVER expose these)
 

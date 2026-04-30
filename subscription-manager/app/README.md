@@ -12,7 +12,7 @@ Click the button above, then fill in 5 environment variables in the Render dashb
 |----------|-------------|
 | `NEXT_PUBLIC_WEB3AUTH_CLIENT_ID` | [dashboard.web3auth.io](https://dashboard.web3auth.io) |
 | `NEXT_PUBLIC_ARKA_API_KEY` | [etherspot.io](https://etherspot.io) — use key `etherspot_AA2QUX5f6tqxLEA8hC7XQu` |
-| `NEXT_PUBLIC_BUNDLER_URL` | Same as above — `https://testnet-rpc.etherspot.io/v1/51?api-key=...` |
+| `NEXT_PUBLIC_BUNDLER_URL` | Bundler endpoint that supports XDC Apothem (chain 51) |
 | `FAUCET_PRIVATE_KEY` | Your deployer wallet private key (owns token contracts) |
 | `KEEPER_PRIVATE_KEY` | Create new wallet, fund with 10 tXDC, paste key |
 
@@ -92,7 +92,7 @@ See `.env.example` for full template. Key vars:
 # Public (safe to expose)
 NEXT_PUBLIC_WEB3AUTH_CLIENT_ID=...
 NEXT_PUBLIC_ARKA_API_KEY=etherspot_xxx
-NEXT_PUBLIC_BUNDLER_URL=https://testnet-rpc.etherspot.io/v1/51?api-key=xxx
+NEXT_PUBLIC_BUNDLER_URL=https://your-bundler-host/v1/51?api-key=xxx
 NEXT_PUBLIC_APOTHEM_RPC_URL=https://erpc.apothem.network
 NEXT_PUBLIC_CHAIN_ID=51
 NEXT_PUBLIC_EXPLORER_URL=https://explorer.apothem.network/
