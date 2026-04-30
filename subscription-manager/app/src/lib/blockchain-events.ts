@@ -12,6 +12,10 @@ const SIG_RENEWED = keccak256(toBytes("Renewed(uint256,uint256)"));
 const SIG_PAUSED = keccak256(toBytes("Paused(uint256)"));
 const SIG_CANCELLED = keccak256(toBytes("Cancelled(uint256)"));
 
+// In-memory cache
+let cache: { events: OnchainEvent[]; userAddress: string; timestamp: number } | null = null;
+const CACHE_TTL_MS = 30000; // 30 seconds
+
 export interface OnchainEvent {
   type: "subscribed" | "renewed" | "paused" | "cancelled" | "userOp";
   txHash: string;
@@ -30,8 +34,13 @@ export async function fetchSubscriptionEventsForUser(
   fromBlock?: bigint,
   toBlock?: bigint,
 ): Promise<OnchainEvent[]> {
+  // Return cached data if fresh
+  if (cache && cache.userAddress.toLowerCase() === userAddress.toLowerCase() && Date.now() - cache.timestamp < CACHE_TTL_MS) {
+    return cache.events;
+  }
+
   const latest = toBlock || await publicClient.getBlockNumber();
-  const start = fromBlock || (latest > 10000n ? latest - 10000n : 0n);
+  const start = fromBlock || (latest > 5000n ? latest - 5000n : 0n); // Reduced from 10k to 5k
 
   const events: OnchainEvent[] = [];
 
@@ -46,34 +55,45 @@ export async function fetchSubscriptionEventsForUser(
     "event UserOperationRevertReason(bytes32 indexed userOpHash, address indexed sender, uint256 nonce, bytes revertReason)",
   ]);
 
-  // Fetch SubscriptionManager logs
-  const subLogs = await publicClient.getLogs({
-    address: SUBMAN,
-    events: subAbi,
-    fromBlock: start,
-    toBlock: latest,
-  });
+  // Fetch logs in parallel
+  const [subLogs, entryLogs] = await Promise.all([
+    publicClient.getLogs({
+      address: SUBMAN,
+      events: subAbi,
+      fromBlock: start,
+      toBlock: latest,
+    }),
+    publicClient.getLogs({
+      address: ENTRYPOINT,
+      event: entryAbi[0],
+      args: { sender: userAddress },
+      fromBlock: start,
+      toBlock: latest,
+    }),
+  ]);
 
+  // Collect unique block numbers and fetch all blocks in parallel
+  const blockNumbers = new Set<bigint>();
+  subLogs.forEach(l => blockNumbers.add(l.blockNumber));
+  entryLogs.forEach(l => blockNumbers.add(l.blockNumber));
+  
+  const blockMap = new Map<bigint, number>();
+  const blocks = await Promise.all(
+    Array.from(blockNumbers).map(bn => publicClient.getBlock({ blockNumber: bn }))
+  );
+  blocks.forEach(b => blockMap.set(b.number, Number(b.timestamp) * 1000));
+
+  // Process SubscriptionManager logs
   for (const log of subLogs) {
     const sig = log.topics[0]?.toLowerCase();
-    const block = await publicClient.getBlock({ blockNumber: log.blockNumber });
-    const ts = Number(block.timestamp) * 1000;
+    const ts = blockMap.get(log.blockNumber) || 0;
 
     if (sig === SIG_SUBSCRIBED.toLowerCase()) {
       const subId = hexToBigInt(log.topics[1] as `0x${string}`).toString();
       const planId = hexToBigInt(log.topics[2] as `0x${string}`).toString();
       const subscriber = ("0x" + (log.topics[3] || "").slice(26)) as `0x${string}`;
       if (subscriber.toLowerCase() === userAddress.toLowerCase()) {
-        events.push({
-          type: "subscribed",
-          txHash: log.transactionHash,
-          blockNumber: log.blockNumber,
-          timestamp: ts,
-          subscriptionId: subId,
-          planId,
-          subscriber,
-          status: "success",
-        });
+        events.push({ type: "subscribed", txHash: log.transactionHash, blockNumber: log.blockNumber, timestamp: ts, subscriptionId: subId, planId, subscriber, status: "success" });
       }
     } else if (sig === SIG_RENEWED.toLowerCase()) {
       const subId = hexToBigInt(log.topics[1] as `0x${string}`).toString();
@@ -87,28 +107,17 @@ export async function fetchSubscriptionEventsForUser(
     }
   }
 
-  // Fetch EntryPoint UserOp revert events for this user
-  const entryLogs = await publicClient.getLogs({
-    address: ENTRYPOINT,
-    event: entryAbi[0],
-    args: { sender: userAddress },
-    fromBlock: start,
-    toBlock: latest,
-  });
-
+  // Process EntryPoint logs
   for (const log of entryLogs) {
-    const block = await publicClient.getBlock({ blockNumber: log.blockNumber });
-    events.push({
-      type: "userOp",
-      txHash: log.transactionHash,
-      blockNumber: log.blockNumber,
-      timestamp: Number(block.timestamp) * 1000,
-      userOpHash: log.topics[1],
-      status: "failed",
-    });
+    const ts = blockMap.get(log.blockNumber) || 0;
+    events.push({ type: "userOp", txHash: log.transactionHash, blockNumber: log.blockNumber, timestamp: ts, userOpHash: log.topics[1], status: "failed" });
   }
 
-  return events.sort((a, b) => Number(b.blockNumber - a.blockNumber));
+  const sorted = events.sort((a, b) => Number(b.blockNumber - a.blockNumber));
+  
+  // Update cache
+  cache = { events: sorted, userAddress, timestamp: Date.now() };
+  return sorted;
 }
 
 async function addIfUserSubscription(

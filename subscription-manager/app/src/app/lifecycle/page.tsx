@@ -9,10 +9,9 @@ import { sendSubscriptionAction } from "@/lib/subscription";
 import { appendTelemetryRow, appendTelemetryRowRemote } from "@/lib/telemetry";
 import { connectWeb3Auth, getProviderAccounts, getProviderPrivateKey } from "@/lib/web3auth";
 import type { OnchainSubscriptionRow } from "@/lib/onchain-subscriptions";
-import { getSmartAccountAddress } from "@/lib/etherspot";
 
 const defaultSubscriptionManagerAddress = process.env.NEXT_PUBLIC_SUBSCRIPTION_MANAGER_ADDRESS || "";
-const explorerUrl = process.env.NEXT_PUBLIC_EXPLORER_URL || "https://explorer.apothem.network/";
+const explorerUrl = process.env.NEXT_PUBLIC_EXPLORER_URL || "https://testnet.xdcscan.com/";
 
 type ActionType = "renew" | "pause" | "cancel";
 
@@ -24,37 +23,45 @@ interface SubscriptionCard {
   daysUntilRenewal: number;
 }
 
+// Client-side cache
+let subsCache: { rows: OnchainSubscriptionRow[]; timestamp: number } | null = null;
+const CACHE_TTL_MS = 15000;
+
 export default function LifecyclePage() {
   const { smartAccountAddress } = useAuth();
   const [rows, setRows] = useState<OnchainSubscriptionRow[]>([]);
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
   const [runningAction, setRunningAction] = useState<{ id: number; action: ActionType } | null>(null);
   const [status, setStatus] = useState<string>("");
   const [lastUpdated, setLastUpdated] = useState<string>("");
-  const [localSmartAccount, setLocalSmartAccount] = useState<string>("");
 
-  // Load subscriptions
-  const refresh = useCallback(async () => {
+  // Load subscriptions with cache
+  const refresh = useCallback(async (force = false) => {
+    if (!force && subsCache && Date.now() - subsCache.timestamp < CACHE_TTL_MS) {
+      setRows(subsCache.rows);
+      setIsLoading(false);
+      return;
+    }
+
     setIsRefreshing(true);
     try {
       const res = await fetch("/api/subscriptions/status");
       if (!res.ok) throw new Error("Failed to load");
       const json = await res.json();
-      setRows(json.rows || []);
+      const data = json.rows || [];
+      subsCache = { rows: data, timestamp: Date.now() };
+      setRows(data);
       setLastUpdated(new Date().toLocaleTimeString());
     } catch (e) {
       setStatus("Failed to load subscriptions");
     } finally {
       setIsRefreshing(false);
+      setIsLoading(false);
     }
   }, []);
 
   useEffect(() => { refresh(); }, [refresh]);
-
-  // Get smart account for display
-  useEffect(() => {
-    if (!smartAccountAddress) return;
-  }, [smartAccountAddress]);
 
   const userRows = useMemo(() => {
     if (!smartAccountAddress) return [];
@@ -98,7 +105,6 @@ export default function LifecyclePage() {
         tokenAmount: card.row.planPriceWei,
       });
 
-      // Telemetry
       const telemetryRow = {
         action: result.action,
         mode: result.mode,
@@ -115,7 +121,8 @@ export default function LifecyclePage() {
       await appendTelemetryRowRemote(telemetryRow);
 
       setStatus(`${action} successful! Tx: ${result.txHash?.slice(0, 12) || "unknown"}...`);
-      await refresh();
+      subsCache = null; // Invalidate cache
+      await refresh(true);
     } catch (e) {
       const msg = e instanceof Error ? e.message : "Action failed";
       setStatus(`${action} failed: ${msg}`);
@@ -142,7 +149,7 @@ export default function LifecyclePage() {
                   <span className="text-xs text-slate-400">Updated {lastUpdated}</span>
                 )}
                 <button
-                  onClick={refresh}
+                  onClick={() => refresh(true)}
                   disabled={isRefreshing}
                   className="rounded-lg bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-800 disabled:opacity-50"
                 >
@@ -162,7 +169,13 @@ export default function LifecyclePage() {
           )}
 
           {/* Cards */}
-          {!smartAccountAddress ? (
+          {isLoading ? (
+            <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+              <SkeletonCard />
+              <SkeletonCard />
+              <SkeletonCard />
+            </div>
+          ) : !smartAccountAddress ? (
             <div className="rounded-2xl border border-slate-200 bg-white p-12 text-center">
               <p className="text-sm text-slate-600">Connect your wallet to view subscriptions.</p>
             </div>
@@ -194,6 +207,35 @@ export default function LifecyclePage() {
   );
 }
 
+function SkeletonCard() {
+  return (
+    <div className="rounded-xl border border-slate-200 bg-white p-5 animate-pulse">
+      <div className="flex items-start justify-between">
+        <div className="flex items-center gap-3">
+          <div className="h-12 w-12 rounded-lg bg-slate-200" />
+          <div className="space-y-2">
+            <div className="h-4 w-24 rounded bg-slate-200" />
+            <div className="h-3 w-16 rounded bg-slate-200" />
+          </div>
+        </div>
+        <div className="h-6 w-16 rounded-full bg-slate-200" />
+      </div>
+      <div className="my-4 border-t border-slate-100" />
+      <div className="space-y-2">
+        <div className="flex justify-between"><div className="h-3 w-20 rounded bg-slate-200" /><div className="h-3 w-12 rounded bg-slate-200" /></div>
+        <div className="flex justify-between"><div className="h-3 w-20 rounded bg-slate-200" /><div className="h-3 w-12 rounded bg-slate-200" /></div>
+        <div className="flex justify-between"><div className="h-3 w-20 rounded bg-slate-200" /><div className="h-3 w-12 rounded bg-slate-200" /></div>
+      </div>
+      <div className="mt-3 h-1.5 w-full rounded-full bg-slate-200" />
+      <div className="mt-4 grid grid-cols-3 gap-2">
+        <div className="h-10 rounded-lg bg-slate-200" />
+        <div className="h-10 rounded-lg bg-slate-200" />
+        <div className="h-10 rounded-lg bg-slate-200" />
+      </div>
+    </div>
+  );
+}
+
 function SubscriptionCardView({
   card,
   isRunning,
@@ -213,7 +255,7 @@ function SubscriptionCardView({
         <div className="flex items-center gap-3">
           {service ? (
             <div className="relative h-12 w-12 flex-shrink-0 overflow-hidden rounded-lg">
-              <Image src={service.service.logo} alt={service.service.name} fill className="object-contain" />
+              <Image src={service.service.logo} alt={service.service.name} fill className="object-contain" sizes="64px" />
             </div>
           ) : (
             <div className="flex h-12 w-12 flex-shrink-0 items-center justify-center rounded-lg bg-slate-100">

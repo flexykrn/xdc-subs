@@ -36,7 +36,6 @@ export default function HistoryPage() {
     setIsLoading(true);
     try {
       const events = await fetchSubscriptionEventsForUser(smartAccountAddress as `0x${string}`);
-
       const txRecords: TxRecord[] = events.map((event, i) => {
         const serviceInfo = event.planId ? getTierByPlanId(Number(event.planId)) : null;
         return {
@@ -52,7 +51,6 @@ export default function HistoryPage() {
           gasPaid: event.status === "failed" ? "Reverted" : "$0 (sponsored)",
         };
       });
-
       setRecords(txRecords);
     } catch (err) {
       console.error("[History] Failed to load events:", err);
@@ -63,7 +61,7 @@ export default function HistoryPage() {
 
   useEffect(() => {
     loadData();
-    const interval = setInterval(loadData, 10000);
+    const interval = setInterval(loadData, 30000); // 30s polling
     return () => clearInterval(interval);
   }, [loadData]);
 
@@ -134,7 +132,14 @@ export default function HistoryPage() {
 
           {/* Records */}
           <div className="mt-6 space-y-3">
-            {filtered.length === 0 ? (
+            {isLoading && records.length === 0 ? (
+              // Skeleton loading
+              <>
+                <SkeletonRow />
+                <SkeletonRow />
+                <SkeletonRow />
+              </>
+            ) : filtered.length === 0 ? (
               <div className="rounded-2xl border border-dashed border-slate-300 bg-white p-12 text-center">
                 <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-slate-100">
                   <svg className="h-8 w-8 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -159,7 +164,7 @@ export default function HistoryPage() {
                   <div className="flex items-center gap-4">
                     {record.service ? (
                       <div className="relative h-10 w-10 flex-shrink-0 overflow-hidden rounded-lg">
-                        <Image src={record.service.logo} alt={record.service.name} fill className="object-contain" />
+                        <Image src={record.service.logo} alt={record.service.name} fill className="object-contain" sizes="64px" />
                       </div>
                     ) : (
                       <div className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-lg bg-slate-100">
@@ -216,6 +221,21 @@ export default function HistoryPage() {
         </div>
       </div>
     </AuthGuard>
+  );
+}
+
+function SkeletonRow() {
+  return (
+    <div className="rounded-xl border border-slate-200 bg-white p-4 animate-pulse">
+      <div className="flex items-center gap-4">
+        <div className="h-10 w-10 rounded-lg bg-slate-200" />
+        <div className="flex-1 space-y-2">
+          <div className="h-4 w-32 rounded bg-slate-200" />
+          <div className="h-3 w-24 rounded bg-slate-200" />
+        </div>
+        <div className="h-3 w-20 rounded bg-slate-200" />
+      </div>
+    </div>
   );
 }
 

@@ -55,44 +55,63 @@ export async function fetchOnchainSubscriptionSnapshot(): Promise<OnchainSubscri
   const upperBound = Math.min(subscriptionCount, scanLimit);
   const nowSeconds = Math.floor(Date.now() / 1000);
 
-  const rows: OnchainSubscriptionRow[] = [];
+  // Fetch all subscriptions in parallel
+  const subscriptionPromises = [];
+  for (let subscriptionId = 1; subscriptionId <= upperBound; subscriptionId++) {
+    subscriptionPromises.push(
+      manager.subscriptions(subscriptionId).then((sub: any) => ({
+        subscriptionId,
+        subscriber: String(sub.subscriber),
+        planId: Number(sub.planId),
+        nextRenewalAtEpoch: toEpochSeconds(sub.nextRenewalAt),
+        active: Boolean(sub.active),
+        paused: Boolean(sub.paused),
+      }))
+    );
+  }
 
-  for (let subscriptionId = 1; subscriptionId <= upperBound; subscriptionId += 1) {
-    const subscription = await manager.subscriptions(subscriptionId);
+  const rawSubs = await Promise.all(subscriptionPromises);
 
-    const planId = Number(subscription.planId);
-    const nextRenewalAtEpoch = toEpochSeconds(subscription.nextRenewalAt);
-    const active = Boolean(subscription.active);
-    const paused = Boolean(subscription.paused);
-    const due = active && !paused && nextRenewalAtEpoch <= nowSeconds;
-
-    let planPriceWei = "0";
-    let planIntervalSeconds = 0;
-    let planTokenAddress = "0x0000000000000000000000000000000000000000";
-
+  // Fetch all plans in parallel (deduplicated)
+  const uniquePlanIds = [...new Set(rawSubs.map(s => s.planId))];
+  const planPromises = uniquePlanIds.map(async (planId) => {
     try {
       const plan = await manager.plans(planId);
-      planPriceWei = plan.price.toString();
-      planIntervalSeconds = Number(plan.interval);
-      planTokenAddress = String(plan.tokenAddress);
+      return {
+        planId,
+        planPriceWei: plan.price.toString(),
+        planIntervalSeconds: Number(plan.interval),
+        planTokenAddress: String(plan.tokenAddress),
+      };
     } catch {
-      // Keep defaults if plan read fails for corrupted/unknown plan id.
+      return { planId, planPriceWei: "0", planIntervalSeconds: 0, planTokenAddress: "0x0000000000000000000000000000000000000000" };
     }
+  });
 
-    rows.push({
-      subscriptionId,
-      subscriber: String(subscription.subscriber),
-      planId,
+  const planMap = new Map(
+    (await Promise.all(planPromises)).map(p => [p.planId, p])
+  );
+
+  // Build final rows
+  const rows: OnchainSubscriptionRow[] = rawSubs.map(sub => {
+    const plan = planMap.get(sub.planId);
+    const nextRenewalAtEpoch = sub.nextRenewalAtEpoch;
+    const due = sub.active && !sub.paused && nextRenewalAtEpoch <= nowSeconds;
+
+    return {
+      subscriptionId: sub.subscriptionId,
+      subscriber: sub.subscriber,
+      planId: sub.planId,
       nextRenewalAtEpoch,
       nextRenewalAtIso: new Date(nextRenewalAtEpoch * 1000).toISOString(),
-      active,
-      paused,
+      active: sub.active,
+      paused: sub.paused,
       due,
-      planPriceWei,
-      planIntervalSeconds,
-      planTokenAddress,
-    });
-  }
+      planPriceWei: plan?.planPriceWei || "0",
+      planIntervalSeconds: plan?.planIntervalSeconds || 0,
+      planTokenAddress: plan?.planTokenAddress || "0x0000000000000000000000000000000000000000",
+    };
+  });
 
   return {
     managerAddress,
@@ -106,6 +125,7 @@ export async function fetchOnchainSubscriptionSnapshot(): Promise<OnchainSubscri
   };
 }
 
+// Demo data for evidence/summary API
 export function buildDemoOnchainSubscriptionSnapshot(): OnchainSubscriptionSnapshot {
   const nowSeconds = Math.floor(Date.now() / 1000);
   const rows: OnchainSubscriptionRow[] = [
