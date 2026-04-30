@@ -8,7 +8,7 @@ import { getServiceById, getTierByPlanId } from "@/lib/services";
 import { getEtherspotPrime } from "@/lib/etherspot";
 import { executeAASubscription } from "@/lib/aa-subscription";
 import { appendTelemetryRow, appendTelemetryRowRemote } from "@/lib/telemetry";
-import { connectWeb3Auth, getProviderAccounts } from "@/lib/web3auth";
+import { connectWeb3Auth, getProviderAccounts, getProviderPrivateKey } from "@/lib/web3auth";
 
 import { useAuth } from "@/components/AuthContext";
 import AuthGuard from "@/components/AuthGuard";
@@ -133,9 +133,10 @@ export default function SubscribePage() {
       const accounts = await getProviderAccounts(provider);
       const wallet = accounts[0] || "";
 
-      // Step 2-3: Create EtherspotPrime from Web3Auth provider and submit AA UserOp
+      // Step 2-3: Create EtherspotPrime from private key and submit AA UserOp
       setStep(2);
-      const primeSdk = await getEtherspotPrime(provider);
+      const privateKey = await getProviderPrivateKey(provider);
+      const primeSdk = await getEtherspotPrime(privateKey);
       const smartAccountAddress = await primeSdk.getCounterFactualAddress();
       setSmartAccount(smartAccountAddress);
 

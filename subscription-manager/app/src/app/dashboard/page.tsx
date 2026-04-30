@@ -147,7 +147,7 @@ export default function DashboardPage() {
       const provider = await connectWeb3Auth();
       const accounts = await getProviderAccounts(provider);
       const privateKey = await getProviderPrivateKey(provider);
-      const primeSdk = await getEtherspotPrime(provider);
+      const primeSdk = await getEtherspotPrime(privateKey);
       const smartAccountAddress = await getSmartAccountAddress(primeSdk);
       const nativeBalance = await getNativeBalance(smartAccountAddress);
 
