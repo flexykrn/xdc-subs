@@ -1,8 +1,15 @@
 import { createPublicClient, http, parseAbi, keccak256, toBytes, hexToBigInt } from "viem";
 
 const RPC_URL = process.env.NEXT_PUBLIC_APOTHEM_RPC_URL || "https://erpc.apothem.network";
-const SUBMAN = (process.env.NEXT_PUBLIC_SUBSCRIPTION_MANAGER_ADDRESS || "0xe8271C9Bc2255A41cd2AB53FbfB69CE4B5f3032E") as `0x${string}`;
-const ENTRYPOINT = (process.env.NEXT_PUBLIC_ENTRYPOINT_ADDRESS || "0x0000000071727De22E5E9d8BAf0edAc6f37da032") as `0x${string}`;
+const SUBMAN = process.env.NEXT_PUBLIC_SUBSCRIPTION_MANAGER_ADDRESS as `0x${string}`;
+if (!SUBMAN || SUBMAN === "0x") {
+  throw new Error("NEXT_PUBLIC_SUBSCRIPTION_MANAGER_ADDRESS not set in environment");
+}
+
+const ENTRYPOINT = process.env.NEXT_PUBLIC_ENTRYPOINT_ADDRESS as `0x${string}`;
+if (!ENTRYPOINT || ENTRYPOINT === "0x") {
+  throw new Error("NEXT_PUBLIC_ENTRYPOINT_ADDRESS not set in environment");
+}
 
 const publicClient = createPublicClient({ transport: http(RPC_URL) });
 

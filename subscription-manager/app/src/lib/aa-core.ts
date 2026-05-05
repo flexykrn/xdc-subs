@@ -12,11 +12,24 @@ import {
 import { privateKeyToAccount } from "viem/accounts";
 
 const RPC_URL = process.env.NEXT_PUBLIC_APOTHEM_RPC_URL || "https://erpc.apothem.network";
-const CHAIN_ID = 51;
+const CHAIN_ID = Number(process.env.NEXT_PUBLIC_CHAIN_ID || 51);
+
 const ENTRYPOINT = (process.env.NEXT_PUBLIC_ENTRYPOINT_ADDRESS || "0x0000000071727De22E5E9d8BAf0edAc6f37da032") as `0x${string}`;
-const FACTORY = (process.env.NEXT_PUBLIC_SIMPLE_ACCOUNT_FACTORY_ADDRESS || "0x91E60e0613810449d098b0b5Ec8b51A0FE8c8985") as `0x${string}`;
-const SPONSOR_PAYMASTER = (process.env.NEXT_PUBLIC_PAYMASTER_ADDRESS || "0x8361Fae5A25e71C2E1db35cDE13E7150bB7b1a42") as `0x${string}`;
-const TOKEN_PAYMASTER = (process.env.NEXT_PUBLIC_TOKEN_PAYMASTER_ADDRESS || "0x17D390EdEb894d8c8B5cD5e6fD47Db923CB4A2c4") as `0x${string}`;
+
+const FACTORY = process.env.NEXT_PUBLIC_SIMPLE_ACCOUNT_FACTORY_ADDRESS as `0x${string}`;
+if (!FACTORY || FACTORY === "0x") {
+  throw new Error("NEXT_PUBLIC_SIMPLE_ACCOUNT_FACTORY_ADDRESS not set in environment");
+}
+
+const SPONSOR_PAYMASTER = process.env.NEXT_PUBLIC_PAYMASTER_ADDRESS as `0x${string}`;
+if (!SPONSOR_PAYMASTER || SPONSOR_PAYMASTER === "0x") {
+  throw new Error("NEXT_PUBLIC_PAYMASTER_ADDRESS not set in environment");
+}
+
+const TOKEN_PAYMASTER = process.env.NEXT_PUBLIC_TOKEN_PAYMASTER_ADDRESS as `0x${string}`;
+if (!TOKEN_PAYMASTER || TOKEN_PAYMASTER === "0x") {
+  throw new Error("NEXT_PUBLIC_TOKEN_PAYMASTER_ADDRESS not set in environment");
+}
 
 const publicClient = createPublicClient({ transport: http(RPC_URL) });
 

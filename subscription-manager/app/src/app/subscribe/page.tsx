@@ -3,6 +3,13 @@
 import { useEffect, useMemo, useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
+import { loadStripe } from "@stripe/stripe-js";
+import {
+  Elements,
+  PaymentElement,
+  useStripe,
+  useElements,
+} from "@stripe/react-stripe-js";
 
 import { getServiceById, getTierByPlanId } from "@/lib/services";
 import { executeAASubscription } from "@/lib/aa-subscription";
@@ -14,11 +21,67 @@ import { useAuth } from "@/components/AuthContext";
 import AuthGuard from "@/components/AuthGuard";
 import SuccessModal from "@/components/SuccessModal";
 
+const stripePromise = loadStripe(
+  process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY || ""
+);
+
 const SM_ADDRESS = process.env.NEXT_PUBLIC_SUBSCRIPTION_MANAGER_ADDRESS || "";
 const ARKA_KEY = process.env.NEXT_PUBLIC_ARKA_API_KEY || "";
 const BUNDLER_URL = process.env.NEXT_PUBLIC_BUNDLER_URL || "";
 const EXPLORER_URL = process.env.NEXT_PUBLIC_EXPLORER_URL || "https://explorer.apothem.network/";
 
+/* ─── Inline Stripe Checkout Form ─── */
+function StripeCheckoutForm({
+  amount,
+  tokenAmount,
+  onSuccess,
+}: {
+  amount: number;
+  tokenAmount: number;
+  onSuccess: (paymentId: string) => void;
+}) {
+  const stripe = useStripe();
+  const elements = useElements();
+  const [isLoading, setIsLoading] = useState(false);
+  const [message, setMessage] = useState("");
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!stripe || !elements) return;
+
+    setIsLoading(true);
+    setMessage("");
+
+    const { error, paymentIntent } = await stripe.confirmPayment({
+      elements,
+      confirmParams: { return_url: window.location.href },
+      redirect: "if_required",
+    });
+
+    if (error) {
+      setMessage(error.message || "Payment failed");
+    } else if (paymentIntent?.status === "succeeded") {
+      setMessage("Payment confirmed! Minting tokens...");
+      onSuccess(paymentIntent.id);
+    }
+    setIsLoading(false);
+  };
+
+  return (
+    <form onSubmit={handleSubmit} className="space-y-3">
+      <PaymentElement />
+      <button
+        disabled={isLoading || !stripe}
+        className="w-full rounded-lg bg-blue-600 py-2.5 text-sm font-bold text-white disabled:opacity-50"
+      >
+        {isLoading ? "Processing..." : `Pay ₹${tokenAmount} for ${tokenAmount} SUB Tokens`}
+      </button>
+      {message && <p className="text-xs text-gray-600">{message}</p>}
+    </form>
+  );
+}
+
+/* ─── Main Subscribe Page ─── */
 export default function SubscribePage() {
   const [serviceId, setServiceId] = useState("");
   const [planId, setPlanId] = useState("1");
@@ -29,10 +92,14 @@ export default function SubscribePage() {
   const [uoHash, setUoHash] = useState("");
   const [smartAccount, setSmartAccount] = useState("");
   const [balance, setBalance] = useState<string | null>(null);
-  const [needsTokens, setNeedsTokens] = useState(false);
   const [nativeBalance, setNativeBalance] = useState<string | null>(null);
   const [showSuccess, setShowSuccess] = useState(false);
   const [step, setStep] = useState(0);
+
+  /* Stripe inline state */
+  const [stripeStep, setStripeStep] = useState<"idle" | "payment" | "minting" | "ready">("idle");
+  const [clientSecret, setClientSecret] = useState("");
+  const [tokensNeeded, setTokensNeeded] = useState(0);
 
   const { eoaAddress, smartAccountAddress, isAuthenticated } = useAuth();
 
@@ -46,7 +113,7 @@ export default function SubscribePage() {
     setPlanId(params.get("planId") || "1");
   }, []);
 
-  // Check token balance when service/tier is selected (uses auth context, no reconnect)
+  /* Check token balance */
   useEffect(() => {
     if (!selectedTier || !isAuthenticated || !smartAccountAddress) return;
     const checkBalance = async () => {
@@ -65,16 +132,14 @@ export default function SubscribePage() {
         const data = await response.json();
         if (data.result) {
           const bal = BigInt(data.result);
-          const formatted = (Number(bal) / 1e18).toFixed(2);
-          setBalance(formatted);
-          setNeedsTokens(bal < BigInt(selectedTier.tier.price));
+          setBalance((Number(bal) / 1e18).toFixed(2));
         }
       } catch { /* ignore */ }
     };
     checkBalance();
   }, [selectedTier, smartAccountAddress, isAuthenticated]);
 
-  // Check native balance for fallback awareness
+  /* Check native balance */
   useEffect(() => {
     if (!smartAccountAddress) return;
     const checkNative = async () => {
@@ -100,22 +165,95 @@ export default function SubscribePage() {
     checkNative();
   }, [smartAccountAddress]);
 
-  // Payment mode auto-selection — ONLY on initial load, don't override user choice
+  /* Auto-select mode */
   useEffect(() => {
-    if (!selectedTier || !isAuthenticated || mode !== "sponsor") return; // Don't override if user already selected
-    
+    if (!selectedTier || !isAuthenticated || mode !== "sponsor") return;
     const hasNative = nativeBalance !== null && Number(nativeBalance) > 0;
-    const hasTokens = balance !== null && Number(balance) >= Number(selectedTier.tier.price);
-    
-    // Auto-select ONLY on first load when user hasn't manually chosen
+    const hasTokens = balance !== null && Number(balance) >= Number(selectedTier.tier.price) / 1e18;
     if (!hasNative && hasTokens) {
       setMode("erc20");
     }
-  }, [nativeBalance, balance, selectedTier, isAuthenticated]); // Removed mode from deps to prevent override
+  }, [nativeBalance, balance, selectedTier, isAuthenticated]);
 
-  const handleSubscribe = async () => {
-    if (!selectedTier) return;
+  /* ─── Start Stripe payment inline ─── */
+  const startStripePayment = async () => {
+    if (!selectedTier || !smartAccountAddress) return;
+    const planCost = Math.round(Number(selectedTier.tier.price) / 1e18);
+    const needed = Math.max(planCost, 50); // Stripe minimum ₹50
+    setTokensNeeded(needed);
+    setStripeStep("payment");
     setError("");
+
+    const res = await fetch("/api/stripe/create-payment-intent", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        amount: needed * 100, // paise
+        userAddress: smartAccountAddress,
+      }),
+    });
+    const data = await res.json();
+    if (data.clientSecret) {
+      setClientSecret(data.clientSecret);
+    } else {
+      setError("Failed to start payment: " + (data.error || "Unknown"));
+      setStripeStep("idle");
+    }
+  };
+
+  /* ─── Mint tokens after Stripe success ─── */
+  const handleStripeSuccess = async (paymentId: string) => {
+    setStripeStep("minting");
+    setError("");
+
+    const targetAddress = smartAccountAddress || eoaAddress;
+    if (!targetAddress) {
+      setError("Wallet address missing. Cannot mint.");
+      setStripeStep("idle");
+      return;
+    }
+
+    try {
+      // Poll for mint completion via webhook (max 30 seconds, 1s interval)
+      let isReady = false;
+      let pollAttempts = 0;
+      const maxPolls = 30;
+
+      while (!isReady && pollAttempts < maxPolls) {
+        const res = await fetch(
+          `/api/stripe/payment-status?paymentId=${paymentId}&userAddress=${targetAddress}`
+        );
+        const data = await res.json();
+
+        if (data.ready || data.status === "minted") {
+          isReady = true;
+          console.log("[Stripe] Mint confirmed on-chain, executing AA subscription...");
+        } else if (data.status === "failed") {
+          throw new Error(data.error || "Payment mint failed");
+        }
+
+        if (!isReady) {
+          pollAttempts++;
+          await new Promise((r) => setTimeout(r, 1000));
+        }
+      }
+
+      if (!isReady) {
+        throw new Error("Mint confirmation timeout (30s) — tokens may still be processing");
+      }
+
+      setStripeStep("ready");
+      // Now execute the actual AA subscription with confirmed balance
+      await runAASubscription();
+    } catch (e: any) {
+      setError(e.message || "Token mint verification failed");
+      setStripeStep("idle");
+    }
+  };
+
+  /* ─── Core AA subscription ─── */
+  const runAASubscription = async () => {
+    if (!selectedTier) return;
     setIsWorking(true);
     setStep(1);
     setTxHash("");
@@ -123,26 +261,23 @@ export default function SubscribePage() {
 
     try {
       if (!SM_ADDRESS) throw new Error("Contract not configured");
-      if (!ARKA_KEY) throw new Error("Arka paymaster key is not configured");
+      if (!ARKA_KEY) throw new Error("Arka paymaster key not configured");
 
-      // Step 1: Connect
       setStep(1);
       const provider = await connectWeb3Auth();
       const accounts = await getProviderAccounts(provider);
       const wallet = accounts[0] || "";
 
-      // Step 2-3: Get smart account address and submit AA UserOp
       setStep(2);
       const privateKey = await getProviderPrivateKey(provider);
-      const smartAccountAddress = await getCounterFactualAddress(wallet as `0x${string}`);
-      setSmartAccount(smartAccountAddress);
+      const saAddress = await getCounterFactualAddress(wallet as `0x${string}`);
+      setSmartAccount(saAddress);
 
-      // Step 3: Pre-flight validation for ERC20 mode
       if (mode === "erc20") {
         setStep(3);
         const { validatePreflight, formatPreflightError } = await import("@/lib/preflight");
         const check = await validatePreflight(
-          smartAccountAddress,
+          saAddress,
           selectedTier.service.tokenAddress as `0x${string}`,
           selectedTier.tier.price,
         );
@@ -152,7 +287,6 @@ export default function SubscribePage() {
       }
 
       setStep(4);
-
       const result = await executeAASubscription(
         privateKey,
         SM_ADDRESS,
@@ -162,14 +296,10 @@ export default function SubscribePage() {
         selectedTier.tier.price,
       );
 
-      console.log("[Subscribe] userOpHash:", result.userOpHash);
-      console.log("[Subscribe] txHash:", result.txHash);
-
       setUoHash(result.userOpHash);
       setTxHash(result.txHash);
       setStep(5);
 
-      // Telemetry
       const telemetryRow = {
         action: "subscribe" as const,
         mode,
@@ -189,12 +319,27 @@ export default function SubscribePage() {
       setShowSuccess(true);
     } catch (err) {
       const msg = err instanceof Error ? err.message : "AA transaction failed";
-      // Show REAL error message — don't hide it behind generic text
       setError(msg);
       setStep(0);
     } finally {
       setIsWorking(false);
     }
+  };
+
+  /* ─── Main Subscribe handler ─── */
+  const handleSubscribe = async () => {
+    if (!selectedTier) return;
+    setError("");
+
+    // 0 tokens → inline Stripe payment first (regardless of gasless or ERC20)
+    const priceInTokens = Number(selectedTier.tier.price) / 1e18;
+    if (balance !== null && Number(balance) < priceInTokens) {
+      await startStripePayment();
+      return;
+    }
+
+    // Otherwise direct AA subscription in selected mode
+    await runAASubscription();
   };
 
   const stepLabels = ["", "Connecting wallet...", "Checking balance...", "Estimating gas...", "Submitting UserOp...", "Confirming on-chain...", "Complete!"];
@@ -246,23 +391,17 @@ export default function SubscribePage() {
               </div>
             </div>
 
-            {/* Token Balance */}
+            {/* Balance display — no yellow banner, just info */}
             {balance !== null && (
-              <div className={`rounded-xl p-3 text-xs ${needsTokens ? 'bg-amber-50 border border-amber-200 text-amber-800' : 'bg-emerald-50 border border-emerald-200 text-emerald-700'}`}>
-                {needsTokens ? (
-                  <div className="flex items-center justify-between gap-2">
-                    <span>Balance: <strong>0 {selectedTier?.tier.priceLabel.split(' ')[1]}</strong> — You need tokens to subscribe</span>
-                    <Link href="/faucet" className="rounded-md bg-amber-200 px-2 py-1 font-bold text-amber-900 hover:bg-amber-300 whitespace-nowrap">
-                      Get Tokens →
-                    </Link>
-                  </div>
-                ) : (
-                  <span>Balance: <strong>{balance} {selectedTier?.tier.priceLabel.split(' ')[1]}</strong> ✓ Ready</span>
+              <div className="rounded-xl p-3 text-xs bg-slate-50 border border-slate-200 text-slate-600">
+                Balance: <strong>{balance} {selectedTier?.tier.priceLabel.split(' ')[1]}</strong>
+                {Number(balance) < Number(selectedTier.tier.price) / 1e18 && mode === "erc20" && (
+                  <span className="ml-2 text-amber-600">— Insufficient for ERC20 mode</span>
                 )}
               </div>
             )}
 
-            {/* Native Balance — Deployer-sponsored gas on testnet */}
+            {/* Gas sponsor info */}
             {nativeBalance !== null && Number(nativeBalance) === 0 && (
               <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-xs text-emerald-800">
                 <p className="font-bold">⛽ Gas Sponsored by Deployer</p>
@@ -279,13 +418,12 @@ export default function SubscribePage() {
                 <p className="text-xs font-medium text-slate-400 uppercase tracking-wider">Payment</p>
               </div>
               
-              {/* Mode selector buttons */}
               <div className="flex gap-2 mb-3">
                 {(["sponsor", "erc20"] as const).map((m) => (
                   <button
                     key={m}
                     onClick={() => setMode(m)}
-                    disabled={isWorking}
+                    disabled={isWorking || stripeStep !== "idle"}
                     className={`flex-1 rounded-lg border px-3 py-2 text-xs font-bold transition ${
                       mode === m
                         ? "border-cyan-300 bg-cyan-50 text-cyan-700"
@@ -317,14 +455,47 @@ export default function SubscribePage() {
               )}
             </div>
 
+            {/* Inline Stripe Payment */}
+            {stripeStep === "payment" && clientSecret && (
+              <div className="rounded-2xl border border-blue-200 bg-white p-5">
+                <p className="text-sm font-bold text-slate-900 mb-3">💳 Buy SUB Tokens</p>
+                <p className="text-xs text-slate-500 mb-3">
+                  Pay ₹{tokensNeeded} to receive {tokensNeeded} SUB tokens. Your subscription will execute automatically after payment.
+                </p>
+                <Elements stripe={stripePromise} options={{ clientSecret }}>
+                  <StripeCheckoutForm
+                    amount={tokensNeeded * 100}
+                    tokenAmount={tokensNeeded}
+                    onSuccess={handleStripeSuccess}
+                  />
+                </Elements>
+                <button
+                  onClick={() => { setStripeStep("idle"); setClientSecret(""); }}
+                  className="mt-3 text-xs text-slate-500 underline"
+                >
+                  Cancel and go back
+                </button>
+              </div>
+            )}
+
+            {stripeStep === "minting" && (
+              <div className="rounded-2xl border border-blue-200 bg-blue-50 p-5 text-center">
+                <div className="animate-spin w-6 h-6 border-2 border-blue-600 border-t-transparent rounded-full mx-auto mb-2" />
+                <p className="text-sm font-medium text-blue-800">Minting {tokensNeeded} SUB tokens...</p>
+                <p className="text-xs text-blue-600 mt-1">This will take a few seconds</p>
+              </div>
+            )}
+
             {/* Subscribe Button */}
-            <button
-              onClick={handleSubscribe}
-              disabled={isWorking || needsTokens}
-              className="w-full rounded-xl bg-slate-900 py-4 text-sm font-black text-white transition hover:bg-slate-800 disabled:opacity-60 disabled:cursor-not-allowed"
-            >
-              {isWorking ? stepLabels[step] || "Processing..." : `Subscribe for ${selectedTier.tier.priceLabel}`}
-            </button>
+            {stripeStep === "idle" && (
+              <button
+                onClick={handleSubscribe}
+                disabled={isWorking}
+                className="w-full rounded-xl bg-slate-900 py-4 text-sm font-black text-white transition hover:bg-slate-800 disabled:opacity-60 disabled:cursor-not-allowed"
+              >
+                {isWorking ? stepLabels[step] || "Processing..." : `Subscribe for ${selectedTier.tier.priceLabel}`}
+              </button>
+            )}
 
             {/* Progress */}
             {isWorking && step > 0 && step < 6 && (
@@ -336,35 +507,42 @@ export default function SubscribePage() {
               </div>
             )}
 
+            {/* Error */}
             {error && (
               <div className="rounded-xl border border-red-200 bg-red-50 p-3 text-xs text-red-700">
-                <p className="font-bold">AA transaction failed:</p>
+                <p className="font-bold">Error</p>
                 <p className="mt-1">{error}</p>
-                {error.includes("sponsorship") && (
-                  <p className="mt-2 text-slate-600">
-                    The deployer gas sponsorship failed. The deployer may be out of tXDC.
+                {error.includes("Arka") && (
+                  <p className="mt-1 text-slate-500">
+                    Try switching to ERC20 mode above, or check your Arka API key in .env.local.
                   </p>
                 )}
               </div>
             )}
 
-            {uoHash && (
+            {/* Explorer Link */}
+            {txHash && (
               <a
-                href={`${EXPLORER_URL.replace(/\/$/, "")}/op/${uoHash}`}
+                href={`${EXPLORER_URL}tx/${txHash}`}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="block text-center text-xs text-cyan-700 underline"
+                className="block text-center text-xs text-cyan-600 hover:underline"
               >
-                View UserOp on explorer →
+                View on XDCScan →
               </a>
             )}
           </div>
         )}
 
+        {/* Success Modal */}
         {showSuccess && (
           <SuccessModal
             isOpen={showSuccess}
-            onClose={() => { setShowSuccess(false); window.location.href = "/dashboard"; }}
+            onClose={() => {
+              setShowSuccess(false);
+              setStripeStep("idle");
+              setStep(0);
+            }}
             action="subscribe"
             mode={mode}
             txHash={txHash}

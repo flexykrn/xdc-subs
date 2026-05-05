@@ -8,7 +8,6 @@ import { getTokenBalance, getTokenInfo, getNativeBalance } from "@/lib/blockchai
 import { getCounterFactualAddress } from "@/lib/aa-core";
 import {
   connectWeb3Auth,
-  disconnectWeb3Auth,
   getProviderAccounts,
   getProviderPrivateKey,
 } from "@/lib/web3auth";
@@ -17,12 +16,7 @@ import { getUserSubscriptions, type UserSubscription } from "@/lib/user-subscrip
 import { useAuth } from "@/components/AuthContext";
 
 const TOKEN_ADDRESSES = {
-  netflix: process.env.NEXT_PUBLIC_NETFLIX_TOKEN_ADDRESS || "",
-  spotify: process.env.NEXT_PUBLIC_SPOTIFY_TOKEN_ADDRESS || "",
-  youtube: process.env.NEXT_PUBLIC_YOUTUBE_TOKEN_ADDRESS || "",
-  jiohotstar: process.env.NEXT_PUBLIC_JIOHOTSTAR_TOKEN_ADDRESS || "",
-  claude: process.env.NEXT_PUBLIC_CLAUDE_TOKEN_ADDRESS || "",
-  copilot: process.env.NEXT_PUBLIC_COPILOT_TOKEN_ADDRESS || "",
+  sub: process.env.NEXT_PUBLIC_SUB_TOKEN_ADDRESS || "",
 };
 
 interface TokenBalance {
@@ -68,32 +62,20 @@ export default function DashboardPage() {
       const native = await getNativeBalance(smartAccountAddress || eoaAddressLocal);
       setNativeBalance(native);
 
-      // Token balances for all 6 services — check BOTH addresses
+      // Token balance — single SUB token for all services
       const balances: TokenBalance[] = [];
-      const entries = [
-        { key: "netflix", service: "Netflix", logo: "/services/netflix.png" },
-        { key: "spotify", service: "Spotify", logo: "/services/spotify.png" },
-        { key: "youtube", service: "YouTube", logo: "/services/yt.png" },
-        { key: "jiohotstar", service: "JioHotstar", logo: "/services/jiohotstar.png" },
-        { key: "claude", service: "Claude", logo: "/services/claude code.png" },
-        { key: "copilot", service: "Copilot", logo: "/services/copliot.png" },
-      ];
-
-      for (const entry of entries) {
-        const addr = TOKEN_ADDRESSES[entry.key as keyof typeof TOKEN_ADDRESSES];
-        if (addr) {
-          // AA best practice: Smart Account holds all assets
-          const [bal, info] = await Promise.all([
-            getTokenBalance(addr, smartAccountAddress || eoaAddressLocal),
-            getTokenInfo(addr),
-          ]);
-          balances.push({
-            symbol: info.symbol,
-            balance: bal,
-            service: entry.service,
-            logo: entry.logo,
-          });
-        }
+      const subAddr = TOKEN_ADDRESSES.sub;
+      if (subAddr) {
+        const [bal, info] = await Promise.all([
+          getTokenBalance(subAddr, smartAccountAddress || eoaAddressLocal),
+          getTokenInfo(subAddr),
+        ]);
+        balances.push({
+          symbol: info.symbol || "SUB",
+          balance: bal,
+          service: "All Services",
+          logo: "/services/sub.png",
+        });
       }
       setTokenBalances(balances);
 
@@ -169,16 +151,6 @@ export default function DashboardPage() {
     }
   };
 
-  const handleDisconnect = async () => {
-    await disconnectWeb3Auth();
-    authLogout();
-    setEoaAddress("");
-    setSmartAccountAddress("");
-    setNativeBalance("0");
-    setTokenBalances([]);
-    setSubscriptions([]);
-  };
-
   return (
     <section className="w-full py-4 space-y-6">
       {/* Header */}
@@ -187,14 +159,6 @@ export default function DashboardPage() {
           <h1 className="text-2xl font-black text-slate-900">Dashboard</h1>
           <p className="text-sm text-slate-500">Your smart account overview</p>
         </div>
-        {isAuthenticated && (
-          <button
-            onClick={handleDisconnect}
-            className="rounded-lg border border-red-200 bg-red-50 px-3 py-1.5 text-xs font-semibold text-red-600 hover:bg-red-100"
-          >
-            Disconnect
-          </button>
-        )}
       </div>
 
       {/* Session / Connect */}
@@ -237,18 +201,23 @@ export default function DashboardPage() {
       {isAuthenticated && (
         <div className="rounded-2xl border border-slate-200 bg-white p-5">
           <div className="flex items-center justify-between mb-4">
-            <h2 className="text-sm font-bold text-slate-900">Service Token Balances</h2>
-            <span className="text-xs text-slate-400">{tokenBalances.length} tokens</span>
+            <h2 className="text-sm font-bold text-slate-900">SUB Token Balance</h2>
+            <div className="flex items-center gap-3">
+              <span className="text-xs text-slate-400">{tokenBalances.length} token</span>
+              <Link href="/buy-tokens" className="rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-bold text-white hover:bg-blue-500">
+                Buy Tokens
+              </Link>
+            </div>
           </div>
 
           {balancesLoading ? (
             <div className="grid gap-3 md:grid-cols-3">
-              {[1, 2, 3, 4, 5, 6].map((i) => (
+              {[1].map((i) => (
                 <div key={i} className="h-20 rounded-xl bg-slate-100 animate-pulse" />
               ))}
             </div>
           ) : tokenBalances.length === 0 ? (
-            <p className="text-sm text-slate-500">No token balances found</p>
+            <p className="text-sm text-slate-500">No SUB tokens found</p>
           ) : (
             <div className="grid gap-3 md:grid-cols-3">
               {tokenBalances.map((token) => (

@@ -62,6 +62,12 @@ contract SubscriptionManager is Ownable {
         emit PlanCreated(planId, price, interval, tokenAddress);
     }
 
+    function updatePlanToken(uint256 planId, address newTokenAddress) external onlyOwner {
+        require(plans[planId].active, "Plan not active");
+        require(newTokenAddress != address(0), "Invalid token");
+        plans[planId].tokenAddress = newTokenAddress;
+    }
+
     function subscribe(uint256 planId) external returns (uint256 subscriptionId) {
         Plan memory plan = plans[planId];
         require(plan.active, "Plan not active");

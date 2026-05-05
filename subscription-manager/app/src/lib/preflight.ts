@@ -1,7 +1,10 @@
 import { createPublicClient, http, parseAbi } from "viem";
 
 const RPC_URL = process.env.NEXT_PUBLIC_APOTHEM_RPC_URL || "https://erpc.apothem.network";
-const TOKEN_PAYMASTER = (process.env.NEXT_PUBLIC_TOKEN_PAYMASTER_ADDRESS || "0x17D390EdEb894d8c8B5cD5e6fD47Db923CB4A2c4") as `0x${string}`;
+const TOKEN_PAYMASTER = process.env.NEXT_PUBLIC_TOKEN_PAYMASTER_ADDRESS as `0x${string}`;
+if (!TOKEN_PAYMASTER || TOKEN_PAYMASTER === "0x") {
+  throw new Error("NEXT_PUBLIC_TOKEN_PAYMASTER_ADDRESS not set in environment");
+}
 
 const publicClient = createPublicClient({ transport: http(RPC_URL) });
 

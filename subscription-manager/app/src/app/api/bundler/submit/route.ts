@@ -11,8 +11,18 @@ import {
 import { privateKeyToAccount } from "viem/accounts";
 
 const RPC_URL = process.env.NEXT_PUBLIC_APOTHEM_RPC_URL || "https://erpc.apothem.network";
-const ENTRYPOINT = (process.env.NEXT_PUBLIC_ENTRYPOINT_ADDRESS || "0x0000000071727De22E5E9d8BAf0edAc6f37da032") as `0x${string}`;
-const PAYMASTER = (process.env.NEXT_PUBLIC_PAYMASTER_ADDRESS || "0x8361Fae5A25e71C2E1db35cDE13E7150bB7b1a42") as `0x${string}`;
+
+const ENTRYPOINT = process.env.NEXT_PUBLIC_ENTRYPOINT_ADDRESS as `0x${string}`;
+if (!ENTRYPOINT || ENTRYPOINT === "0x") {
+  throw new Error("NEXT_PUBLIC_ENTRYPOINT_ADDRESS not set in environment");
+}
+
+const PAYMASTER = process.env.NEXT_PUBLIC_PAYMASTER_ADDRESS as `0x${string}`;
+if (!PAYMASTER || PAYMASTER === "0x") {
+  throw new Error("NEXT_PUBLIC_PAYMASTER_ADDRESS not set in environment");
+}
+
+const CHAIN_ID = Number(process.env.NEXT_PUBLIC_CHAIN_ID || 51);
 const PAYMASTER_KEY = process.env.PAYMASTER_PRIVATE_KEY || process.env.DEPLOYER_PRIVATE_KEY;
 
 function requireServerEnv(name: string): string {
@@ -81,7 +91,7 @@ function getUserOpHash(userOp: PackedUserOp): `0x${string}` {
       { type: "address" },
       { type: "uint256" },
     ],
-    [innerHash, ENTRYPOINT, 51n]
+    [innerHash, ENTRYPOINT, BigInt(CHAIN_ID)]
   ));
 }
 

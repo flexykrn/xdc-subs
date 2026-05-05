@@ -29,3 +29,6 @@ Thumbs.db
 # Documentation (reference only - do not push without approval)
 /doc
 doc/
+.agents
+.claude
+/skills

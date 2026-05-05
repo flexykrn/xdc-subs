@@ -22,12 +22,7 @@ export interface SubscriptionService {
   category: "streaming" | "music" | "ai" | "sports";
 }
 
-const netflixToken = process.env.NEXT_PUBLIC_NETFLIX_TOKEN_ADDRESS || "";
-const spotifyToken = process.env.NEXT_PUBLIC_SPOTIFY_TOKEN_ADDRESS || "";
-const youtubeToken = process.env.NEXT_PUBLIC_YOUTUBE_TOKEN_ADDRESS || "";
-const jiohotstarToken = process.env.NEXT_PUBLIC_JIOHOTSTAR_TOKEN_ADDRESS || "";
-const claudeToken = process.env.NEXT_PUBLIC_CLAUDE_TOKEN_ADDRESS || "";
-const copilotToken = process.env.NEXT_PUBLIC_COPILOT_TOKEN_ADDRESS || "";
+const SUB_TOKEN = process.env.NEXT_PUBLIC_SUB_TOKEN_ADDRESS || "";
 
 export const SERVICES: SubscriptionService[] = [
   {
@@ -39,14 +34,14 @@ export const SERVICES: SubscriptionService[] = [
     bgColor: "bg-red-50",
     borderColor: "border-red-200",
     textColor: "text-red-900",
-    tokenAddress: netflixToken,
+    tokenAddress: SUB_TOKEN,
     category: "streaming",
     tiers: [
       {
         id: "netflix-mobile",
         name: "Mobile",
         price: "5000000000000000000",
-        priceLabel: "5 NFX",
+        priceLabel: "5 SUB",
         intervalDays: 30,
         features: ["480p streaming", "1 device", "Mobile & tablet only"],
         planId: 1,
@@ -55,7 +50,7 @@ export const SERVICES: SubscriptionService[] = [
         id: "netflix-basic",
         name: "Basic",
         price: "10000000000000000000",
-        priceLabel: "10 NFX",
+        priceLabel: "10 SUB",
         intervalDays: 30,
         features: ["720p HD", "1 device", "All content"],
         planId: 2,
@@ -64,7 +59,7 @@ export const SERVICES: SubscriptionService[] = [
         id: "netflix-standard",
         name: "Standard",
         price: "20000000000000000000",
-        priceLabel: "20 NFX",
+        priceLabel: "20 SUB",
         intervalDays: 30,
         features: ["1080p Full HD", "2 devices", "Spatial audio"],
         planId: 3,
@@ -80,14 +75,14 @@ export const SERVICES: SubscriptionService[] = [
     bgColor: "bg-green-50",
     borderColor: "border-green-200",
     textColor: "text-green-900",
-    tokenAddress: spotifyToken,
+    tokenAddress: SUB_TOKEN,
     category: "music",
     tiers: [
       {
         id: "spotify-mini",
         name: "Mini",
         price: "1000000000000000000",
-        priceLabel: "1 SPF",
+        priceLabel: "1 SUB",
         intervalDays: 7,
         features: ["Ad-free on mobile", "30 skips/day", "Offline up to 30 songs"],
         planId: 4,
@@ -96,7 +91,7 @@ export const SERVICES: SubscriptionService[] = [
         id: "spotify-individual",
         name: "Individual",
         price: "8000000000000000000",
-        priceLabel: "8 SPF",
+        priceLabel: "8 SUB",
         intervalDays: 30,
         features: ["Ad-free everywhere", "Offline playback", "High quality audio"],
         planId: 5,
@@ -105,7 +100,7 @@ export const SERVICES: SubscriptionService[] = [
         id: "spotify-family",
         name: "Family",
         price: "15000000000000000000",
-        priceLabel: "15 SPF",
+        priceLabel: "15 SUB",
         intervalDays: 30,
         features: ["6 accounts", "Parental controls", "Blend playlists"],
         planId: 6,
@@ -121,14 +116,14 @@ export const SERVICES: SubscriptionService[] = [
     bgColor: "bg-red-50",
     borderColor: "border-red-200",
     textColor: "text-red-900",
-    tokenAddress: youtubeToken,
+    tokenAddress: SUB_TOKEN,
     category: "streaming",
     tiers: [
       {
         id: "yt-individual",
         name: "Individual",
         price: "7000000000000000000",
-        priceLabel: "7 YTB",
+        priceLabel: "7 SUB",
         intervalDays: 30,
         features: ["Ad-free videos", "Background play", "Downloads"],
         planId: 7,
@@ -137,7 +132,7 @@ export const SERVICES: SubscriptionService[] = [
         id: "yt-family",
         name: "Family",
         price: "13000000000000000000",
-        priceLabel: "13 YTB",
+        priceLabel: "13 SUB",
         intervalDays: 30,
         features: ["6 family members", "YouTube Music Premium", "Kids app"],
         planId: 8,
@@ -153,14 +148,14 @@ export const SERVICES: SubscriptionService[] = [
     bgColor: "bg-blue-50",
     borderColor: "border-blue-200",
     textColor: "text-blue-900",
-    tokenAddress: jiohotstarToken,
+    tokenAddress: SUB_TOKEN,
     category: "sports",
     tiers: [
       {
         id: "jh-mobile",
         name: "Mobile",
         price: "3000000000000000000",
-        priceLabel: "3 JHS",
+        priceLabel: "3 SUB",
         intervalDays: 30,
         features: ["Live sports", "HD on mobile", "Ad-supported movies"],
         planId: 9,
@@ -169,7 +164,7 @@ export const SERVICES: SubscriptionService[] = [
         id: "jh-super",
         name: "Super",
         price: "6000000000000000000",
-        priceLabel: "6 JHS",
+        priceLabel: "6 SUB",
         intervalDays: 30,
         features: ["All devices", "Full HD", "Dolby Atmos"],
         planId: 10,
@@ -178,7 +173,7 @@ export const SERVICES: SubscriptionService[] = [
         id: "jh-premium",
         name: "Premium",
         price: "12000000000000000000",
-        priceLabel: "12 JHS",
+        priceLabel: "12 SUB",
         intervalDays: 30,
         features: ["4K UHD", "4 screens", "Disney+ content"],
         planId: 11,
@@ -194,14 +189,14 @@ export const SERVICES: SubscriptionService[] = [
     bgColor: "bg-orange-50",
     borderColor: "border-orange-200",
     textColor: "text-orange-900",
-    tokenAddress: claudeToken,
+    tokenAddress: SUB_TOKEN,
     category: "ai",
     tiers: [
       {
         id: "claude-pro",
         name: "Pro",
         price: "25000000000000000000",
-        priceLabel: "25 CLA",
+        priceLabel: "25 SUB",
         intervalDays: 30,
         features: ["5x more usage", "Claude 3.5 Sonnet", "Priority bandwidth"],
         planId: 12,
@@ -210,7 +205,7 @@ export const SERVICES: SubscriptionService[] = [
         id: "claude-team",
         name: "Team",
         price: "35000000000000000000",
-        priceLabel: "35 CLA",
+        priceLabel: "35 SUB",
         intervalDays: 30,
         features: ["Shared projects", "Admin console", "SSO & audit logs"],
         planId: 13,
@@ -219,7 +214,7 @@ export const SERVICES: SubscriptionService[] = [
         id: "claude-enterprise",
         name: "Enterprise",
         price: "50000000000000000000",
-        priceLabel: "50 CLA",
+        priceLabel: "50 SUB",
         intervalDays: 30,
         features: ["Unlimited usage", "Custom models", "Dedicated support", "SLA guarantee"],
         planId: 16,
@@ -235,14 +230,14 @@ export const SERVICES: SubscriptionService[] = [
     bgColor: "bg-slate-50",
     borderColor: "border-slate-200",
     textColor: "text-slate-900",
-    tokenAddress: copilotToken,
+    tokenAddress: SUB_TOKEN,
     category: "ai",
     tiers: [
       {
         id: "copilot-individual",
         name: "Individual",
         price: "12000000000000000000",
-        priceLabel: "12 COP",
+        priceLabel: "12 SUB",
         intervalDays: 30,
         features: ["Unlimited suggestions", "Code completion", "Chat in IDE"],
         planId: 14,
@@ -251,7 +246,7 @@ export const SERVICES: SubscriptionService[] = [
         id: "copilot-business",
         name: "Business",
         price: "22000000000000000000",
-        priceLabel: "22 COP",
+        priceLabel: "22 SUB",
         intervalDays: 30,
         features: ["Code review", "Knowledge bases", "Policy management"],
         planId: 15,
@@ -260,7 +255,7 @@ export const SERVICES: SubscriptionService[] = [
         id: "copilot-enterprise",
         name: "Enterprise",
         price: "35000000000000000000",
-        priceLabel: "35 COP",
+        priceLabel: "35 SUB",
         intervalDays: 30,
         features: ["Org-wide deployment", "Custom policies", "Advanced analytics", "Priority support"],
         planId: 17,

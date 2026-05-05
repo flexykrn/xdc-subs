@@ -7,9 +7,12 @@ import {
 } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
 
-const PAYMASTER_KEY = process.env.PAYMASTER_PRIVATE_KEY || process.env.DEPLOYER_PRIVATE_KEY;
-const PAYMASTER_ADDRESS = (process.env.NEXT_PUBLIC_PAYMASTER_ADDRESS || "0x8361Fae5A25e71C2E1db35cDE13E7150bB7b1a42") as `0x${string}`;
-const CHAIN_ID = 51;
+const PAYMASTER_KEY = process.env.PAYMASTER_PRIVATE_KEY;
+const PAYMASTER_ADDRESS = process.env.NEXT_PUBLIC_PAYMASTER_ADDRESS as `0x${string}`;
+if (!PAYMASTER_ADDRESS || PAYMASTER_ADDRESS === "0x") {
+  throw new Error("NEXT_PUBLIC_PAYMASTER_ADDRESS not set in environment");
+}
+const CHAIN_ID = Number(process.env.NEXT_PUBLIC_CHAIN_ID || 51);
 
 export async function POST(req: NextRequest) {
   try {

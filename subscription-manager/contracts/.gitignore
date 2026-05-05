@@ -1,0 +1,22 @@
+# Dependencies
+/node_modules
+
+# Environment
+.env
+.env.local
+.env.*.local
+
+# Hardhat
+/cache
+/artifacts/build-info
+/artifacts/**/*.dbg.json
+/typechain
+/typechain-types
+
+# Deployment info with keys
+deployment.json
+deployment-*.json
+
+# Misc
+.DS_Store
+*.log
