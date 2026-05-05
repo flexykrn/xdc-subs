@@ -26,8 +26,6 @@ const stripePromise = loadStripe(
 );
 
 const SM_ADDRESS = process.env.NEXT_PUBLIC_SUBSCRIPTION_MANAGER_ADDRESS || "";
-const ARKA_KEY = process.env.NEXT_PUBLIC_ARKA_API_KEY || "";
-const BUNDLER_URL = process.env.NEXT_PUBLIC_BUNDLER_URL || "";
 const EXPLORER_URL = process.env.NEXT_PUBLIC_EXPLORER_URL || "https://explorer.apothem.network/";
 
 /* ─── Inline Stripe Checkout Form ─── */
@@ -261,7 +259,6 @@ export default function SubscribePage() {
 
     try {
       if (!SM_ADDRESS) throw new Error("Contract not configured");
-      if (!ARKA_KEY) throw new Error("Arka paymaster key not configured");
 
       setStep(1);
       const provider = await connectWeb3Auth();
@@ -512,11 +509,6 @@ export default function SubscribePage() {
               <div className="rounded-xl border border-red-200 bg-red-50 p-3 text-xs text-red-700">
                 <p className="font-bold">Error</p>
                 <p className="mt-1">{error}</p>
-                {error.includes("Arka") && (
-                  <p className="mt-1 text-slate-500">
-                    Try switching to ERC20 mode above, or check your Arka API key in .env.local.
-                  </p>
-                )}
               </div>
             )}
 

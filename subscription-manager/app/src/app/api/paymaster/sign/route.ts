@@ -8,7 +8,7 @@ import {
 import { privateKeyToAccount } from "viem/accounts";
 
 const PAYMASTER_KEY = process.env.PAYMASTER_PRIVATE_KEY;
-const PAYMASTER_ADDRESS = process.env.NEXT_PUBLIC_PAYMASTER_ADDRESS as `0x${string}`;
+const PAYMASTER_ADDRESS = (process.env.NEXT_PUBLIC_PAYMASTER_ADDRESS || process.env.PAYMASTER_ADDRESS) as `0x${string}`;
 if (!PAYMASTER_ADDRESS || PAYMASTER_ADDRESS === "0x") {
   throw new Error("NEXT_PUBLIC_PAYMASTER_ADDRESS not set in environment");
 }

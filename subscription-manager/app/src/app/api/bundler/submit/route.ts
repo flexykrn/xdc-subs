@@ -12,14 +12,14 @@ import { privateKeyToAccount } from "viem/accounts";
 
 const RPC_URL = process.env.NEXT_PUBLIC_APOTHEM_RPC_URL || "https://erpc.apothem.network";
 
-const ENTRYPOINT = process.env.NEXT_PUBLIC_ENTRYPOINT_ADDRESS as `0x${string}`;
+const ENTRYPOINT = (process.env.NEXT_PUBLIC_ENTRYPOINT_ADDRESS || process.env.ENTRYPOINT_ADDRESS) as `0x${string}`;
 if (!ENTRYPOINT || ENTRYPOINT === "0x") {
-  throw new Error("NEXT_PUBLIC_ENTRYPOINT_ADDRESS not set in environment");
+  throw new Error("ENTRYPOINT_ADDRESS not set in environment");
 }
 
-const PAYMASTER = process.env.NEXT_PUBLIC_PAYMASTER_ADDRESS as `0x${string}`;
+const PAYMASTER = (process.env.NEXT_PUBLIC_PAYMASTER_ADDRESS || process.env.PAYMASTER_ADDRESS) as `0x${string}`;
 if (!PAYMASTER || PAYMASTER === "0x") {
-  throw new Error("NEXT_PUBLIC_PAYMASTER_ADDRESS not set in environment");
+  throw new Error("PAYMASTER_ADDRESS not set in environment");
 }
 
 const CHAIN_ID = Number(process.env.NEXT_PUBLIC_CHAIN_ID || 51);

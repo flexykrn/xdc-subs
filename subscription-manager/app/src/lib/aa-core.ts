@@ -12,9 +12,8 @@ import {
 import { privateKeyToAccount } from "viem/accounts";
 
 const RPC_URL = process.env.NEXT_PUBLIC_APOTHEM_RPC_URL || "https://erpc.apothem.network";
+const ENTRYPOINT = (process.env.NEXT_PUBLIC_ENTRYPOINT_ADDRESS || process.env.ENTRYPOINT_ADDRESS || "0x0000000071727De22E5E9d8BAf0edAc6f37da032") as `0x${string}`;
 const CHAIN_ID = Number(process.env.NEXT_PUBLIC_CHAIN_ID || 51);
-
-const ENTRYPOINT = (process.env.NEXT_PUBLIC_ENTRYPOINT_ADDRESS || "0x0000000071727De22E5E9d8BAf0edAc6f37da032") as `0x${string}`;
 
 const FACTORY = process.env.NEXT_PUBLIC_SIMPLE_ACCOUNT_FACTORY_ADDRESS as `0x${string}`;
 if (!FACTORY || FACTORY === "0x") {
