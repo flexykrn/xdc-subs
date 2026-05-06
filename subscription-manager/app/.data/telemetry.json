@@ -1,5 +1,29 @@
 [
   {
+    "action": "subscribe",
+    "mode": "erc20",
+    "startedAt": "2026-05-06T09:47:04.475Z",
+    "result": "success",
+    "wallet": "0xec16e11861eeef3d04edea737e86646ee7f7d695",
+    "token": "0xA555BEf79D024F1776C05A09739943eB6aaA96Af",
+    "subscriptionId": "14",
+    "uoHash": "0xa915fc18da623a1921a8a2f56a84449c7492de2af7efbefea104ffe6279ca0d7",
+    "txHash": "0xf82dbc9805029f657b90a438039d98bda78cdac40287fef2328654894ad7fe7c",
+    "confirmedAt": "2026-05-06T09:47:04.475Z"
+  },
+  {
+    "action": "subscribe",
+    "mode": "sponsor",
+    "startedAt": "2026-05-06T09:46:47.075Z",
+    "result": "success",
+    "wallet": "0xec16e11861eeef3d04edea737e86646ee7f7d695",
+    "token": "0xA555BEf79D024F1776C05A09739943eB6aaA96Af",
+    "subscriptionId": "1",
+    "uoHash": "0x2cfa617f47b0ee67d98602ac51a6a76e3dd1ff0ff0ded04fb112ad06bfa35697",
+    "txHash": "0xb495eec6f2deb5117920b2ef9ef1f8a84e294d0e0bfe166d03159fca1a7cfea2",
+    "confirmedAt": "2026-05-06T09:46:47.075Z"
+  },
+  {
     "action": "pause",
     "mode": "sponsor",
     "startedAt": "2026-05-06T08:43:07.045Z",
