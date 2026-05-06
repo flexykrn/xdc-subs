@@ -31,6 +31,9 @@ const erc20Abi = [
   },
 ] as const;
 
+// Token info cache (symbol/decimals don't change)
+const tokenInfoCache = new Map<string, { symbol: string; decimals: number }>();
+
 export async function getTokenBalance(tokenAddress: string, walletAddress: string): Promise<string> {
   try {
     const balance = await publicClient.readContract({
@@ -47,6 +50,11 @@ export async function getTokenBalance(tokenAddress: string, walletAddress: strin
 }
 
 export async function getTokenInfo(tokenAddress: string): Promise<{ symbol: string; decimals: number }> {
+  const cacheKey = tokenAddress.toLowerCase();
+  if (tokenInfoCache.has(cacheKey)) {
+    return tokenInfoCache.get(cacheKey)!;
+  }
+
   try {
     const [symbol, decimals] = await Promise.all([
       publicClient.readContract({
@@ -60,10 +68,14 @@ export async function getTokenInfo(tokenAddress: string): Promise<{ symbol: stri
         functionName: "decimals",
       }),
     ]);
-    return { symbol: symbol as string, decimals: decimals as number };
+    const result = { symbol: symbol as string, decimals: decimals as number };
+    tokenInfoCache.set(cacheKey, result);
+    return result;
   } catch (err) {
     console.warn(`[Blockchain] Failed to read token info for ${tokenAddress}:`, err);
-    return { symbol: "TOKEN", decimals: 18 };
+    const fallback = { symbol: "TOKEN", decimals: 18 };
+    tokenInfoCache.set(cacheKey, fallback);
+    return fallback;
   }
 }
 

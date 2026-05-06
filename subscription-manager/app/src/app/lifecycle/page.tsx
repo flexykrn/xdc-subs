@@ -42,32 +42,6 @@ export default function LifecyclePage() {
     }
   }, [ctxAddress]);
 
-  // Load from localStorage if AuthContext is empty
-  useEffect(() => {
-    if (isAuthenticated || smartAccountAddress) return;
-    
-    try {
-      const saved = localStorage.getItem("aa-auth");
-      if (saved) {
-        const data = JSON.parse(saved);
-        if (data.smartAccountAddress) {
-          setSmartAccountAddress(data.smartAccountAddress);
-          setUser({
-            eoaAddress: data.eoaAddress || "",
-            smartAccountAddress: data.smartAccountAddress,
-            nativeBalance: data.nativeBalance || "0",
-          });
-          login(); // FIX: Also set isAuthenticated = true
-          loadSubscriptions(data.smartAccountAddress);
-          return;
-        }
-      }
-    } catch {
-      localStorage.removeItem("aa-auth");
-    }
-    setIsLoading(false);
-  }, [isAuthenticated, smartAccountAddress, setUser, login]);
-
   const loadSubscriptions = useCallback(async (sa?: string) => {
     const address = sa || smartAccountAddress;
     if (!address) return;
@@ -82,6 +56,37 @@ export default function LifecyclePage() {
       setIsLoading(false);
     }
   }, [smartAccountAddress]);
+
+  // Initial load from localStorage
+  useEffect(() => {
+    if (isAuthenticated || smartAccountAddress) return;
+    
+    try {
+      const saved = localStorage.getItem("aa-auth");
+      if (saved) {
+        const data = JSON.parse(saved);
+        if (data.smartAccountAddress) {
+          setSmartAccountAddress(data.smartAccountAddress);
+          setUser({
+            eoaAddress: data.eoaAddress || "",
+            smartAccountAddress: data.smartAccountAddress,
+            nativeBalance: data.nativeBalance || "0",
+          });
+          login();
+        }
+      }
+    } catch {
+      localStorage.removeItem("aa-auth");
+    }
+    setIsLoading(false);
+  }, [isAuthenticated, smartAccountAddress, setUser, login]);
+
+  // Load subscriptions when smartAccountAddress is set
+  useEffect(() => {
+    if (smartAccountAddress) {
+      loadSubscriptions(smartAccountAddress);
+    }
+  }, [smartAccountAddress, loadSubscriptions]);
 
   async function handleConnect() {
     try {

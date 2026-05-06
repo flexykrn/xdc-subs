@@ -48,9 +48,9 @@ export default function DashboardPage() {
 
   // Load everything when wallet connects
   useEffect(() => {
-    if (!eoaAddressLocal) return;
+    if (!smartAccountAddress) return;
     loadAllData();
-  }, [eoaAddressLocal]);
+  }, [smartAccountAddress]);
 
   async function loadAllData() {
     setBalancesLoading(true);
@@ -58,34 +58,34 @@ export default function DashboardPage() {
     setSummaryLoading(true);
 
     try {
-      // Native balance of smart account
-      const native = await getNativeBalance(smartAccountAddress || eoaAddressLocal);
+      const address = smartAccountAddress || eoaAddressLocal;
+      const subAddr = TOKEN_ADDRESSES.sub;
+
+      // Fetch all data in parallel
+      const [native, bal, info, subs] = await Promise.all([
+        getNativeBalance(address),
+        subAddr ? getTokenBalance(subAddr, address) : Promise.resolve("0"),
+        subAddr ? getTokenInfo(subAddr) : Promise.resolve({ symbol: "SUB" }),
+        smartAccountAddress ? getUserSubscriptions(smartAccountAddress) : Promise.resolve([]),
+      ]);
+
       setNativeBalance(native);
 
-      // Token balance — single SUB token for all services
-      const balances: TokenBalance[] = [];
-      const subAddr = TOKEN_ADDRESSES.sub;
-      if (subAddr) {
-        const [bal, info] = await Promise.all([
-          getTokenBalance(subAddr, smartAccountAddress || eoaAddressLocal),
-          getTokenInfo(subAddr),
-        ]);
-        balances.push({
+      // Token balance
+      if (subAddr && bal !== "0") {
+        setTokenBalances([{
           symbol: info.symbol || "SUB",
           balance: bal,
           service: "All Services",
           logo: "/services/xdc.svg",
-        });
+        }]);
+      } else {
+        setTokenBalances([]);
       }
-      setTokenBalances(balances);
 
-      // On-chain subscriptions — check Smart Account only
-      const subs = smartAccountAddress 
-        ? await getUserSubscriptions(smartAccountAddress)
-        : [];
       setSubscriptions(subs);
 
-      // User's own on-chain summary (NOT global)
+      // User's own on-chain summary
       const now = Math.floor(Date.now() / 1000);
       setOnchainSummary({
         totalScanned: subs.length,

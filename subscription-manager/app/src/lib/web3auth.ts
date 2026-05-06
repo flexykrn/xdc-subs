@@ -1,4 +1,3 @@
-import { APOTHEM_CHAIN } from "@/config/chains";
 import {
   CHAIN_NAMESPACES,
   WEB3AUTH_NETWORK,
@@ -16,14 +15,19 @@ let web3authInstance: Web3Auth | null = null;
 let initPromise: Promise<Web3Auth> | null = null;
 
 function makeChainConfig() {
+  const chainId = Number(process.env.NEXT_PUBLIC_CHAIN_ID || 51);
+  const rpcUrl = process.env.NEXT_PUBLIC_APOTHEM_RPC_URL || "https://erpc.apothem.network";
+  const explorerUrl = process.env.NEXT_PUBLIC_EXPLORER_URL || "https://testnet.xdcscan.com/";
+  const isMainnet = chainId === 50;
+  
   return {
     chainNamespace: CHAIN_NAMESPACES.EIP155,
-    chainId: "0x33",
-    rpcTarget: APOTHEM_CHAIN.rpcUrl,
-    displayName: APOTHEM_CHAIN.chainName,
-    blockExplorerUrl: APOTHEM_CHAIN.explorerUrl,
-    ticker: APOTHEM_CHAIN.nativeCurrency.symbol,
-    tickerName: APOTHEM_CHAIN.nativeCurrency.name,
+    chainId: "0x" + chainId.toString(16),
+    rpcTarget: rpcUrl,
+    displayName: isMainnet ? "XDC Mainnet" : "XDC Apothem Testnet",
+    blockExplorerUrl: explorerUrl,
+    ticker: "XDC",
+    tickerName: "XDC Network",
     decimals: 18,
   };
 }
@@ -84,7 +88,7 @@ export async function getWeb3Auth(): Promise<Web3Auth> {
         } else {
           throw new Error(
             `Web3Auth initialization failed after ${maxRetries} attempts: ${errorMsg}. ` +
-            `Please check your internet connection and verify the Web3Auth Client ID is valid for SAPPHIRE_DEVNET.`
+            `Please check your internet connection and verify the Web3Auth Client ID is valid.`
           );
         }
       }

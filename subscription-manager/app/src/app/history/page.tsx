@@ -63,7 +63,7 @@ export default function HistoryPage() {
     }
   }, [isAuthenticated, smartAccountAddress, setUser, login]);
 
-  // Load records - INSTANT from localStorage, then verify from blockchain
+  // Load records - INSTANT from localStorage, then verify from blockchain (deferred)
   useEffect(() => {
     if (!smartAccountAddress) return;
 
@@ -85,8 +85,11 @@ export default function HistoryPage() {
     });
     setRecords(storedRecords);
 
-    // 2. Scan blockchain in background for genuine verification
-    scanBlockchain(smartAccountAddress, storedRecords);
+    // 2. Scan blockchain AFTER initial render (deferred, non-blocking)
+    const timer = setTimeout(() => {
+      scanBlockchain(smartAccountAddress, storedRecords);
+    }, 500);
+    return () => clearTimeout(timer);
   }, [smartAccountAddress]);
 
   async function scanBlockchain(address: string, currentRecords: TxRecord[]) {
