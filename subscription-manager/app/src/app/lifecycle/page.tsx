@@ -32,22 +32,24 @@ export default function LifecyclePage() {
   const [runningAction, setRunningAction] = useState<{ id: number; action: ActionType } | null>(null);
   const [actionResult, setActionResult] = useState<{ type: "success" | "error"; message: string; txHash?: string } | null>(null);
 
-  // Connect wallet and load subscriptions
+  // Load from localStorage or connect
   useEffect(() => {
     async function init() {
       try {
-        const provider = await connectWeb3Auth();
-        const accounts = await getProviderAccounts(provider);
-        const wallet = accounts[0] || "";
-        if (wallet) {
-          const sa = await getCounterFactualAddress(wallet as `0x${string}`);
-          setSmartAccountAddress(sa);
-          await loadSubscriptions(sa);
+        // Try localStorage first (no popup)
+        const saved = localStorage.getItem("aa-auth");
+        if (saved) {
+          const data = JSON.parse(saved);
+          if (data.smartAccountAddress) {
+            setSmartAccountAddress(data.smartAccountAddress);
+            await loadSubscriptions(data.smartAccountAddress);
+            return;
+          }
         }
-      } catch (err) {
-        console.error("[Lifecycle] Init error:", err);
-        setIsLoading(false);
+      } catch {
+        localStorage.removeItem("aa-auth");
       }
+      setIsLoading(false);
     }
     init();
   }, []);
@@ -66,6 +68,21 @@ export default function LifecyclePage() {
       setIsLoading(false);
     }
   }, [smartAccountAddress]);
+
+  async function handleConnect() {
+    try {
+      const provider = await connectWeb3Auth();
+      const accounts = await getProviderAccounts(provider);
+      const wallet = accounts[0] || "";
+      if (wallet) {
+        const sa = await getCounterFactualAddress(wallet as `0x${string}`);
+        setSmartAccountAddress(sa);
+        await loadSubscriptions(sa);
+      }
+    } catch (err) {
+      console.error("[Lifecycle] Connect error:", err);
+    }
+  }
 
   const cards = useMemo<SubscriptionCard[]>(() => {
     return subscriptions.map(sub => {
@@ -99,8 +116,6 @@ export default function LifecyclePage() {
         mode: "sponsor",
         subscriptionManagerAddress: defaultSubscriptionManagerAddress,
         subscriptionId: card.sub.subscriptionId,
-        tokenAddress: card.sub.subscriber, // not used for sponsor mode
-        tokenAmount: "0",
       });
 
       appendTelemetryRow({
@@ -127,7 +142,6 @@ export default function LifecyclePage() {
   return (
     <AuthGuard>
       <div className="min-h-screen bg-slate-50">
-        {/* Header */}
         <div className="bg-white border-b border-slate-200">
           <div className="mx-auto max-w-4xl px-4 py-5">
             <div className="flex items-center justify-between">
@@ -135,19 +149,20 @@ export default function LifecyclePage() {
                 <h1 className="text-xl font-bold text-slate-900">My Subscriptions</h1>
                 <p className="text-xs text-slate-500 mt-0.5">Manage your active plans</p>
               </div>
-              <button
-                onClick={() => loadSubscriptions()}
-                disabled={isRefreshing}
-                className="text-xs font-medium text-slate-600 hover:text-slate-900 disabled:opacity-40"
-              >
-                {isRefreshing ? "Loading..." : "Refresh"}
-              </button>
+              {smartAccountAddress && (
+                <button
+                  onClick={() => loadSubscriptions()}
+                  disabled={isRefreshing}
+                  className="text-xs font-medium text-slate-600 hover:text-slate-900 disabled:opacity-40"
+                >
+                  {isRefreshing ? "Loading..." : "Refresh"}
+                </button>
+              )}
             </div>
           </div>
         </div>
 
         <div className="mx-auto max-w-4xl px-4 py-4">
-          {/* Result banner */}
           {actionResult && (
             <div className={`mb-3 rounded-lg border p-2.5 ${actionResult.type === "error" ? "border-red-200 bg-red-50" : "border-emerald-200 bg-emerald-50"}`}>
               <div className="flex items-center justify-between">
@@ -164,14 +179,20 @@ export default function LifecyclePage() {
             </div>
           )}
 
-          {/* Cards */}
           {isLoading ? (
             <div className="grid gap-3 md:grid-cols-2">
               <SkeletonCard /><SkeletonCard />
             </div>
           ) : !smartAccountAddress ? (
             <div className="rounded-xl bg-white border border-slate-200 p-8 text-center">
-              <p className="text-sm text-slate-500">Connect your wallet</p>
+              <div className="text-4xl mb-3">🔒</div>
+              <p className="text-sm text-slate-500">Connect your wallet to view subscriptions</p>
+              <button
+                onClick={handleConnect}
+                className="mt-4 rounded-lg bg-cyan-500 px-6 py-2 text-sm font-semibold text-white hover:bg-cyan-400"
+              >
+                Connect Wallet
+              </button>
             </div>
           ) : cards.length === 0 ? (
             <div className="rounded-xl bg-white border border-slate-200 p-8 text-center">
@@ -230,7 +251,6 @@ function SubscriptionCardView({
 
   return (
     <div className="rounded-xl bg-white border border-slate-200 p-4">
-      {/* Header */}
       <div className="flex items-center gap-3">
         {service ? (
           <div className="relative h-10 w-10 flex-shrink-0">
@@ -248,7 +268,6 @@ function SubscriptionCardView({
         <StateBadge active={isActive} paused={sub.paused} />
       </div>
 
-      {/* Progress */}
       <div className="mt-3">
         <div className="flex justify-between text-[10px] mb-1">
           <span className="text-slate-500">{isOverdue ? "Overdue" : `${daysUntilRenewal} days left`}</span>
@@ -262,7 +281,6 @@ function SubscriptionCardView({
         </div>
       </div>
 
-      {/* Details */}
       <div className="mt-2.5 grid grid-cols-2 gap-x-4 gap-y-1 text-[11px]">
         <div><span className="text-slate-400">ID:</span> <span className="font-mono text-slate-700">#{sub.subscriptionId}</span></div>
         <div><span className="text-slate-400">Renew:</span> <span className="text-slate-700">{card.nextRenewalDate.toLocaleDateString()}</span></div>
@@ -278,7 +296,6 @@ function SubscriptionCardView({
         </div>
       </div>
 
-      {/* Actions */}
       <div className="mt-3 grid grid-cols-3 gap-2">
         <ActionButton label="Renew" icon="↻" color="cyan" disabled={isRunning || !isActive} onClick={() => onAction("renew")} />
         <ActionButton label={sub.paused ? "Resume" : "Pause"} icon={sub.paused ? "▶" : "⏸"} color="amber" disabled={isRunning} onClick={() => onAction("pause")} />

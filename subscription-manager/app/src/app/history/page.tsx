@@ -30,23 +30,30 @@ export default function HistoryPage() {
   const [filter, setFilter] = useState<"all" | "subscribed" | "renewed" | "paused" | "cancelled">("all");
   const [statusFilter, setStatusFilter] = useState<"all" | "success" | "failed">("all");
 
-  // Connect wallet on mount
+  // Load from localStorage first (no popup)
   useEffect(() => {
     async function init() {
       try {
-        const provider = await connectWeb3Auth();
-        const accounts = await getProviderAccounts(provider);
-        const wallet = accounts[0] || "";
-        if (wallet) {
-          const sa = await getCounterFactualAddress(wallet as `0x${string}`);
-          setSmartAccountAddress(sa);
+        const saved = localStorage.getItem("aa-auth");
+        if (saved) {
+          const data = JSON.parse(saved);
+          if (data.smartAccountAddress) {
+            setSmartAccountAddress(data.smartAccountAddress);
+            return;
+          }
         }
-      } catch (err) {
-        console.error("[History] Init error:", err);
+      } catch {
+        localStorage.removeItem("aa-auth");
       }
     }
     init();
   }, []);
+
+  // Load data when address is available
+  useEffect(() => {
+    if (!smartAccountAddress) return;
+    loadData();
+  }, [smartAccountAddress]);
 
   const loadData = useCallback(async () => {
     if (!smartAccountAddress) return;
@@ -75,11 +82,19 @@ export default function HistoryPage() {
     }
   }, [smartAccountAddress]);
 
-  useEffect(() => {
-    loadData();
-    const interval = setInterval(loadData, 30000);
-    return () => clearInterval(interval);
-  }, [loadData]);
+  async function handleConnect() {
+    try {
+      const provider = await connectWeb3Auth();
+      const accounts = await getProviderAccounts(provider);
+      const wallet = accounts[0] || "";
+      if (wallet) {
+        const sa = await getCounterFactualAddress(wallet as `0x${string}`);
+        setSmartAccountAddress(sa);
+      }
+    } catch (err) {
+      console.error("[History] Connect error:", err);
+    }
+  }
 
   const filtered = useMemo(() => {
     return records.filter(r => {
@@ -92,7 +107,6 @@ export default function HistoryPage() {
   return (
     <AuthGuard>
       <div className="min-h-screen bg-slate-50">
-        {/* Header */}
         <div className="bg-white border-b border-slate-200">
           <div className="mx-auto max-w-4xl px-4 py-5">
             <div className="flex items-center justify-between">
@@ -100,70 +114,87 @@ export default function HistoryPage() {
                 <h1 className="text-xl font-bold text-slate-900">History</h1>
                 <p className="text-xs text-slate-500 mt-0.5">Your on-chain activity</p>
               </div>
-              <button
-                onClick={loadData}
-                disabled={isLoading}
-                className="text-xs font-medium text-slate-600 hover:text-slate-900 disabled:opacity-40"
-              >
-                {isLoading ? "Loading..." : "Refresh"}
-              </button>
+              {smartAccountAddress && (
+                <button
+                  onClick={loadData}
+                  disabled={isLoading}
+                  className="text-xs font-medium text-slate-600 hover:text-slate-900 disabled:opacity-40"
+                >
+                  {isLoading ? "Loading..." : "Refresh"}
+                </button>
+              )}
             </div>
           </div>
         </div>
 
         <div className="mx-auto max-w-4xl px-4 py-4">
-          {/* Filters */}
-          <div className="flex flex-wrap gap-1.5 mb-4">
-            {(["all", "subscribed", "renewed", "paused", "cancelled"] as const).map((f) => (
+          {!smartAccountAddress ? (
+            <div className="rounded-xl bg-white border border-slate-200 p-8 text-center">
+              <div className="text-4xl mb-3">🔒</div>
+              <p className="text-sm text-slate-500">Connect your wallet to view history</p>
               <button
-                key={f}
-                onClick={() => setFilter(f)}
-                className={`rounded-full px-3 py-1 text-[11px] font-medium transition ${
-                  filter === f
-                    ? "bg-slate-900 text-white"
-                    : "bg-white text-slate-600 hover:bg-slate-100 border border-slate-200"
-                }`}
+                onClick={handleConnect}
+                className="mt-4 rounded-lg bg-cyan-500 px-6 py-2 text-sm font-semibold text-white hover:bg-cyan-400"
               >
-                {f === "all" ? "All" : f.charAt(0).toUpperCase() + f.slice(1)}
+                Connect Wallet
               </button>
-            ))}
-            <div className="w-px h-5 bg-slate-300 mx-1" />
-            {(["all", "success", "failed"] as const).map((s) => (
-              <button
-                key={s}
-                onClick={() => setStatusFilter(s)}
-                className={`rounded-full px-3 py-1 text-[11px] font-medium transition ${
-                  statusFilter === s
-                    ? s === "success" ? "bg-emerald-600 text-white" : s === "failed" ? "bg-red-600 text-white" : "bg-slate-900 text-white"
-                    : "bg-white text-slate-600 hover:bg-slate-100 border border-slate-200"
-                }`}
-              >
-                {s === "all" ? "All" : s.charAt(0).toUpperCase() + s.slice(1)}
-              </button>
-            ))}
-          </div>
-
-          {/* List */}
-          <div className="space-y-2">
-            {isLoading && records.length === 0 ? (
-              <>
-                <SkeletonRow />
-                <SkeletonRow />
-                <SkeletonRow />
-              </>
-            ) : filtered.length === 0 ? (
-              <div className="rounded-xl bg-white border border-slate-200 p-8 text-center">
-                <p className="text-sm text-slate-500">No transactions found</p>
-                <Link href="/plans" className="mt-2 inline-block text-xs text-cyan-600 hover:underline">
-                  Subscribe to a plan →
-                </Link>
+            </div>
+          ) : (
+            <>
+              {/* Filters */}
+              <div className="flex flex-wrap gap-1.5 mb-4">
+                {(["all", "subscribed", "renewed", "paused", "cancelled"] as const).map((f) => (
+                  <button
+                    key={f}
+                    onClick={() => setFilter(f)}
+                    className={`rounded-full px-3 py-1 text-[11px] font-medium transition ${
+                      filter === f
+                        ? "bg-slate-900 text-white"
+                        : "bg-white text-slate-600 hover:bg-slate-100 border border-slate-200"
+                    }`}
+                  >
+                    {f === "all" ? "All" : f.charAt(0).toUpperCase() + f.slice(1)}
+                  </button>
+                ))}
+                <div className="w-px h-5 bg-slate-300 mx-1" />
+                {(["all", "success", "failed"] as const).map((s) => (
+                  <button
+                    key={s}
+                    onClick={() => setStatusFilter(s)}
+                    className={`rounded-full px-3 py-1 text-[11px] font-medium transition ${
+                      statusFilter === s
+                        ? s === "success" ? "bg-emerald-600 text-white" : s === "failed" ? "bg-red-600 text-white" : "bg-slate-900 text-white"
+                        : "bg-white text-slate-600 hover:bg-slate-100 border border-slate-200"
+                    }`}
+                  >
+                    {s === "all" ? "All" : s.charAt(0).toUpperCase() + s.slice(1)}
+                  </button>
+                ))}
               </div>
-            ) : (
-              filtered.map((record) => (
-                <HistoryRow key={record.id} record={record} />
-              ))
-            )}
-          </div>
+
+              {/* List */}
+              <div className="space-y-2">
+                {isLoading && records.length === 0 ? (
+                  <>
+                    <SkeletonRow />
+                    <SkeletonRow />
+                    <SkeletonRow />
+                  </>
+                ) : filtered.length === 0 ? (
+                  <div className="rounded-xl bg-white border border-slate-200 p-8 text-center">
+                    <p className="text-sm text-slate-500">No transactions found</p>
+                    <Link href="/plans" className="mt-2 inline-block text-xs text-cyan-600 hover:underline">
+                      Subscribe to a plan →
+                    </Link>
+                  </div>
+                ) : (
+                  filtered.map((record) => (
+                    <HistoryRow key={record.id} record={record} />
+                  ))
+                )}
+              </div>
+            </>
+          )}
         </div>
       </div>
     </AuthGuard>
@@ -184,12 +215,10 @@ function HistoryRow({ record }: { record: TxRecord }) {
 
   return (
     <div className="rounded-xl bg-white border border-slate-200 overflow-hidden">
-      {/* Main row */}
       <div
         onClick={() => setExpanded(!expanded)}
         className="flex items-center gap-3 px-4 py-3 cursor-pointer hover:bg-slate-50 transition"
       >
-        {/* Icon */}
         <div className="flex-shrink-0">
           {record.service ? (
             <div className="relative h-9 w-9">
@@ -202,7 +231,6 @@ function HistoryRow({ record }: { record: TxRecord }) {
           )}
         </div>
 
-        {/* Content */}
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2">
             <span className={`text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full ${tc.bg} ${tc.text}`}>
@@ -219,13 +247,11 @@ function HistoryRow({ record }: { record: TxRecord }) {
           </p>
         </div>
 
-        {/* Right side */}
         <div className="flex-shrink-0 text-right">
           <p className="text-[10px] text-slate-400">#{record.blockNumber.toLocaleString()}</p>
           <p className="text-[11px] text-slate-500">{formatTime(record.timestamp)}</p>
         </div>
 
-        {/* Chevron */}
         <svg
           className={`h-4 w-4 text-slate-400 flex-shrink-0 transition-transform ${expanded ? "rotate-180" : ""}`}
           fill="none" viewBox="0 0 24 24" stroke="currentColor"
@@ -234,7 +260,6 @@ function HistoryRow({ record }: { record: TxRecord }) {
         </svg>
       </div>
 
-      {/* Expanded */}
       {expanded && (
         <div className="px-4 pb-3 pt-1 border-t border-slate-100">
           <div className="grid gap-2 sm:grid-cols-2 text-xs">
