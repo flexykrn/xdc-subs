@@ -23,8 +23,8 @@ const SIG_CANCELLED = keccak256(toBytes("Cancelled(uint256)"));
 let cache: { events: OnchainEvent[]; userAddress: string; timestamp: number } | null = null;
 const CACHE_TTL_MS = 60000; // 60 seconds (doubled)
 
-// BLOCK_SCAN_RANGE: reduce for faster loading (was 5000, now 1000 for testnet)
-const BLOCK_SCAN_RANGE = 1000;
+// BLOCK_SCAN_RANGE: 0 = scan all blocks from genesis (for testnet with few transactions)
+const BLOCK_SCAN_RANGE = 0;
 
 export interface OnchainEvent {
   type: "subscribed" | "renewed" | "paused" | "cancelled" | "userOp";
@@ -50,7 +50,7 @@ export async function fetchSubscriptionEventsForUser(
   }
 
   const latest = toBlock || await publicClient.getBlockNumber();
-  const start = fromBlock || (latest > BigInt(BLOCK_SCAN_RANGE) ? latest - BigInt(BLOCK_SCAN_RANGE) : 0n);
+  const start = fromBlock || (BLOCK_SCAN_RANGE > 0 && latest > BigInt(BLOCK_SCAN_RANGE) ? latest - BigInt(BLOCK_SCAN_RANGE) : 0n);
 
   const events: OnchainEvent[] = [];
   const userSubIds = new Set<string>(); // Track user's subscription IDs

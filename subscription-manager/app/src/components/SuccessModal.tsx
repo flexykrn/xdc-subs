@@ -1,5 +1,7 @@
 'use client';
 
+import { useRouter } from "next/navigation";
+
 interface SuccessModalProps {
   isOpen: boolean;
   onClose: () => void;
@@ -23,7 +25,19 @@ export default function SuccessModal({
   explorerUrl,
   nextRenewal,
 }: SuccessModalProps) {
+  const router = useRouter();
+
   if (!isOpen) return null;
+
+  function handleDashboard() {
+    onClose();
+    router.push("/dashboard");
+  }
+
+  function handleHistory() {
+    onClose();
+    router.push("/history");
+  }
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
@@ -87,17 +101,17 @@ export default function SuccessModal({
 
         <div className="mt-6 flex gap-3">
           <button
-            onClick={onClose}
+            onClick={handleDashboard}
             className="flex-1 rounded-xl bg-slate-900 px-4 py-3 text-sm font-semibold text-white transition hover:bg-slate-800"
           >
             Go to Dashboard
           </button>
-          <a
-            href="/history"
-            className="flex-1 rounded-xl border border-slate-300 px-4 py-3 text-center text-sm font-semibold text-slate-800 transition hover:border-slate-400"
+          <button
+            onClick={handleHistory}
+            className="flex-1 rounded-xl border border-slate-300 px-4 py-3 text-sm font-semibold text-slate-800 transition hover:border-slate-400"
           >
             View History
-          </a>
+          </button>
         </div>
       </div>
     </div>
