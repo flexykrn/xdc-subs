@@ -1,14 +1,17 @@
 import { createPublicClient, http, parseAbi, keccak256, toBytes, hexToBigInt } from "viem";
 
 const RPC_URL = process.env.NEXT_PUBLIC_APOTHEM_RPC_URL || "https://erpc.apothem.network";
-const SUBMAN = process.env.NEXT_PUBLIC_SUBSCRIPTION_MANAGER_ADDRESS as `0x${string}`;
-if (!SUBMAN || SUBMAN === "0x") {
-  throw new Error("NEXT_PUBLIC_SUBSCRIPTION_MANAGER_ADDRESS not set in environment");
-}
+const SUBMAN = (process.env.NEXT_PUBLIC_SUBSCRIPTION_MANAGER_ADDRESS || process.env.SUBSCRIPTION_MANAGER_ADDRESS) as `0x${string}`;
+const ENTRYPOINT = (process.env.NEXT_PUBLIC_ENTRYPOINT_ADDRESS || process.env.ENTRYPOINT_ADDRESS) as `0x${string}`;
 
-const ENTRYPOINT = process.env.NEXT_PUBLIC_ENTRYPOINT_ADDRESS as `0x${string}`;
-if (!ENTRYPOINT || ENTRYPOINT === "0x") {
-  throw new Error("NEXT_PUBLIC_ENTRYPOINT_ADDRESS not set in environment");
+// Validate at runtime, not import time
+function validateEnv() {
+  if (!SUBMAN || SUBMAN === "0x") {
+    throw new Error("SUBSCRIPTION_MANAGER_ADDRESS not set");
+  }
+  if (!ENTRYPOINT || ENTRYPOINT === "0x") {
+    throw new Error("ENTRYPOINT_ADDRESS not set");
+  }
 }
 
 const publicClient = createPublicClient({ transport: http(RPC_URL) });
@@ -23,8 +26,8 @@ const SIG_CANCELLED = keccak256(toBytes("Cancelled(uint256)"));
 let cache: { events: OnchainEvent[]; userAddress: string; timestamp: number } | null = null;
 const CACHE_TTL_MS = 60000; // 60 seconds (doubled)
 
-// BLOCK_SCAN_RANGE: 0 = scan all blocks from genesis (for testnet with few transactions)
-const BLOCK_SCAN_RANGE = 0;
+// BLOCK_SCAN_RANGE: scan last 2000 blocks for testnet (adjust for mainnet)
+const BLOCK_SCAN_RANGE = 2000;
 
 export interface OnchainEvent {
   type: "subscribed" | "renewed" | "paused" | "cancelled" | "userOp";
@@ -44,13 +47,16 @@ export async function fetchSubscriptionEventsForUser(
   fromBlock?: bigint,
   toBlock?: bigint,
 ): Promise<OnchainEvent[]> {
+  validateEnv();
+  
   // Return cached data if fresh
   if (cache && cache.userAddress.toLowerCase() === userAddress.toLowerCase() && Date.now() - cache.timestamp < CACHE_TTL_MS) {
     return cache.events;
   }
 
   const latest = toBlock || await publicClient.getBlockNumber();
-  const start = fromBlock || (BLOCK_SCAN_RANGE > 0 && latest > BigInt(BLOCK_SCAN_RANGE) ? latest - BigInt(BLOCK_SCAN_RANGE) : 0n);
+  // If fromBlock is provided (incremental scan), use it. Otherwise scan last N blocks.
+  const start = fromBlock || (latest > BigInt(BLOCK_SCAN_RANGE) ? latest - BigInt(BLOCK_SCAN_RANGE) : 0n);
 
   const events: OnchainEvent[] = [];
   const userSubIds = new Set<string>(); // Track user's subscription IDs

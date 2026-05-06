@@ -6,6 +6,7 @@ import Link from "next/link";
 import AuthGuard from "@/components/AuthGuard";
 import { useAuth } from "@/components/AuthContext";
 import { getTierByPlanId } from "@/lib/services";
+import { getStoredEvents, type StoredSubscriptionEvent } from "@/lib/subscription-events";
 import { fetchSubscriptionEventsForUser } from "@/lib/blockchain-events";
 import { connectWeb3Auth, getProviderAccounts } from "@/lib/web3auth";
 import { getCounterFactualAddress } from "@/lib/aa-core";
@@ -25,10 +26,10 @@ interface TxRecord {
 const explorerUrl = process.env.NEXT_PUBLIC_EXPLORER_URL || "https://testnet.xdcscan.com/";
 
 export default function HistoryPage() {
-  const { isAuthenticated, smartAccountAddress: ctxAddress, setUser } = useAuth();
+  const { isAuthenticated, smartAccountAddress: ctxAddress, setUser, login } = useAuth();
   const [smartAccountAddress, setSmartAccountAddress] = useState("");
   const [records, setRecords] = useState<TxRecord[]>([]);
-  const [isLoading, setIsLoading] = useState(false);
+  const [isScanning, setIsScanning] = useState(false);
   const [filter, setFilter] = useState<"all" | "subscribed" | "renewed" | "paused" | "cancelled">("all");
   const [statusFilter, setStatusFilter] = useState<"all" | "success" | "failed">("all");
 
@@ -49,31 +50,52 @@ export default function HistoryPage() {
         const data = JSON.parse(saved);
         if (data.smartAccountAddress) {
           setSmartAccountAddress(data.smartAccountAddress);
-          // Sync back to AuthContext
           setUser({
             eoaAddress: data.eoaAddress || "",
             smartAccountAddress: data.smartAccountAddress,
             nativeBalance: data.nativeBalance || "0",
           });
+          login(); // FIX: Also set isAuthenticated = true
         }
       }
     } catch {
       localStorage.removeItem("aa-auth");
     }
-  }, [isAuthenticated, smartAccountAddress, setUser]);
+  }, [isAuthenticated, smartAccountAddress, setUser, login]);
 
-  // Load data when address is available
+  // Load records - INSTANT from localStorage, then verify from blockchain
   useEffect(() => {
     if (!smartAccountAddress) return;
-    loadData();
+
+    // 1. Load from localStorage instantly
+    const storedEvents = getStoredEvents();
+    const storedRecords: TxRecord[] = storedEvents.map((event, i) => {
+      const serviceInfo = event.planId ? getTierByPlanId(Number(event.planId)) : null;
+      return {
+        id: `${event.txHash}-${i}`,
+        type: event.type as TxRecord["type"],
+        service: serviceInfo ? { name: serviceInfo.service.name, logo: serviceInfo.service.logo } : null,
+        plan: serviceInfo?.tier.name || event.tierName || (event.subscriptionId ? `Sub #${event.subscriptionId}` : "Unknown"),
+        status: event.status,
+        txHash: event.txHash,
+        userOpHash: undefined,
+        timestamp: new Date(event.timestamp),
+        blockNumber: event.blockNumber,
+      };
+    });
+    setRecords(storedRecords);
+
+    // 2. Scan blockchain in background for genuine verification
+    scanBlockchain(smartAccountAddress, storedRecords);
   }, [smartAccountAddress]);
 
-  const loadData = useCallback(async () => {
-    if (!smartAccountAddress) return;
-    setIsLoading(true);
+  async function scanBlockchain(address: string, currentRecords: TxRecord[]) {
+    setIsScanning(true);
     try {
-      const events = await fetchSubscriptionEventsForUser(smartAccountAddress as `0x${string}`);
-      const txRecords: TxRecord[] = events.map((event, i) => {
+      const events = await fetchSubscriptionEventsForUser(address as `0x${string}`);
+      
+      // Merge: blockchain is source of truth, but keep localStorage events that blockchain might have missed
+      const blockchainRecords: TxRecord[] = events.map((event, i) => {
         const serviceInfo = event.planId ? getTierByPlanId(Number(event.planId)) : null;
         return {
           id: `${event.txHash}-${i}`,
@@ -87,13 +109,43 @@ export default function HistoryPage() {
           blockNumber: Number(event.blockNumber),
         };
       });
-      setRecords(txRecords);
+
+      // Merge: deduplicate by txHash + type
+      const seen = new Set(blockchainRecords.map(r => r.id));
+      const merged = [...blockchainRecords];
+      
+      for (const localRec of currentRecords) {
+        if (!seen.has(localRec.id)) {
+          merged.push(localRec);
+        }
+      }
+      
+      // Sort by time (newest first)
+      merged.sort((a, b) => b.timestamp.getTime() - a.timestamp.getTime());
+      
+      setRecords(merged);
+      
+      // Update localStorage with verified blockchain data
+      const verifiedEvents: StoredSubscriptionEvent[] = merged.map(r => ({
+        type: r.type as any,
+        txHash: r.txHash,
+        blockNumber: r.blockNumber,
+        timestamp: r.timestamp.getTime(),
+        subscriptionId: r.id.split('-')[1]?.split('_')[0],
+        status: r.status,
+        serviceName: r.service?.name,
+        serviceLogo: r.service?.logo,
+        tierName: r.plan,
+      }));
+      localStorage.setItem("subscription-events", JSON.stringify(verifiedEvents));
+      
     } catch (err) {
-      console.error("[History] Failed to load events:", err);
+      console.error("[History] Blockchain scan failed:", err);
+      // Keep showing localStorage data if blockchain scan fails
     } finally {
-      setIsLoading(false);
+      setIsScanning(false);
     }
-  }, [smartAccountAddress]);
+  }
 
   async function handleConnect() {
     try {
@@ -108,6 +160,7 @@ export default function HistoryPage() {
           smartAccountAddress: sa,
           nativeBalance: "0",
         });
+        login(); // FIX: Set isAuthenticated = true
       }
     } catch (err) {
       console.error("[History] Connect error:", err);
@@ -130,15 +183,17 @@ export default function HistoryPage() {
             <div className="flex items-center justify-between">
               <div>
                 <h1 className="text-xl font-bold text-slate-900">History</h1>
-                <p className="text-xs text-slate-500 mt-0.5">Your on-chain activity</p>
+                <p className="text-xs text-slate-500 mt-0.5">
+                  {isScanning ? "Verifying with blockchain..." : "Your on-chain activity"}
+                </p>
               </div>
               {smartAccountAddress && (
                 <button
-                  onClick={loadData}
-                  disabled={isLoading}
+                  onClick={() => scanBlockchain(smartAccountAddress, records)}
+                  disabled={isScanning}
                   className="text-xs font-medium text-slate-600 hover:text-slate-900 disabled:opacity-40"
                 >
-                  {isLoading ? "Loading..." : "Refresh"}
+                  {isScanning ? "Scanning..." : "Refresh"}
                 </button>
               )}
             </div>
@@ -159,6 +214,15 @@ export default function HistoryPage() {
             </div>
           ) : (
             <>
+              {/* Scanning indicator */}
+              {isScanning && records.length === 0 && (
+                <div className="rounded-xl bg-white border border-slate-200 p-8 text-center mb-4">
+                  <div className="w-8 h-8 border-2 border-cyan-500 border-t-transparent rounded-full animate-spin mx-auto mb-3" />
+                  <p className="text-sm text-slate-500">Scanning blockchain for genuine events...</p>
+                  <p className="text-xs text-slate-400 mt-1">This may take a few seconds on first load</p>
+                </div>
+              )}
+
               {/* Filters */}
               <div className="flex flex-wrap gap-1.5 mb-4">
                 {(["all", "subscribed", "renewed", "paused", "cancelled"] as const).map((f) => (
@@ -192,18 +256,17 @@ export default function HistoryPage() {
 
               {/* List */}
               <div className="space-y-2">
-                {isLoading && records.length === 0 ? (
-                  <>
-                    <SkeletonRow />
-                    <SkeletonRow />
-                    <SkeletonRow />
-                  </>
+                {records.length === 0 && !isScanning ? (
+                  <div className="rounded-xl bg-white border border-slate-200 p-8 text-center">
+                    <p className="text-sm text-slate-500">No transactions yet</p>
+                    <p className="text-xs text-slate-400 mt-1">Subscribe to a plan to see history</p>
+                    <Link href="/plans" className="mt-2 inline-block text-xs text-cyan-600 hover:underline">
+                      Browse plans →
+                    </Link>
+                  </div>
                 ) : filtered.length === 0 ? (
                   <div className="rounded-xl bg-white border border-slate-200 p-8 text-center">
-                    <p className="text-sm text-slate-500">No transactions found</p>
-                    <Link href="/plans" className="mt-2 inline-block text-xs text-cyan-600 hover:underline">
-                      Subscribe to a plan →
-                    </Link>
+                    <p className="text-sm text-slate-500">No transactions match this filter</p>
                   </div>
                 ) : (
                   filtered.map((record) => (
@@ -211,6 +274,16 @@ export default function HistoryPage() {
                   ))
                 )}
               </div>
+
+              {/* Scanning indicator when refreshing */}
+              {isScanning && records.length > 0 && (
+                <div className="text-center py-3">
+                  <div className="inline-flex items-center gap-2 text-xs text-slate-400">
+                    <div className="w-4 h-4 border-2 border-slate-300 border-t-transparent rounded-full animate-spin" />
+                    Verifying with blockchain...
+                  </div>
+                </div>
+              )}
             </>
           )}
         </div>
@@ -327,19 +400,4 @@ function formatTime(date: Date): string {
   if (hours < 24) return `${hours}h ago`;
   if (days < 7) return `${days}d ago`;
   return date.toLocaleDateString();
-}
-
-function SkeletonRow() {
-  return (
-    <div className="rounded-xl bg-white border border-slate-200 p-3 animate-pulse">
-      <div className="flex items-center gap-3">
-        <div className="h-9 w-9 rounded-lg bg-slate-200" />
-        <div className="flex-1 space-y-1.5">
-          <div className="h-3 w-20 rounded bg-slate-200" />
-          <div className="h-3.5 w-32 rounded bg-slate-200" />
-        </div>
-        <div className="h-3 w-14 rounded bg-slate-200" />
-      </div>
-    </div>
-  );
 }

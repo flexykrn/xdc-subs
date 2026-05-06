@@ -1,5 +1,63 @@
 [
   {
+    "action": "pause",
+    "mode": "sponsor",
+    "startedAt": "2026-05-06T08:43:07.045Z",
+    "result": "success",
+    "wallet": "0xec16e11861eeef3d04edea737e86646ee7f7d695",
+    "subscriptionId": "2",
+    "uoHash": "0x3e8b7bda4667b388d898f17094c60f9bacb6a01e9b9eb22fb94edcd442b23a3c",
+    "txHash": "0xce75b012b736b54f46910b061ce526b25fd9591e705e8f3760dbfa58d7e5e9aa",
+    "confirmedAt": "2026-05-06T08:43:07.045Z"
+  },
+  {
+    "action": "cancel",
+    "mode": "sponsor",
+    "startedAt": "2026-05-06T08:30:40.573Z",
+    "result": "success",
+    "wallet": "0xec16e11861eeef3d04edea737e86646ee7f7d695",
+    "subscriptionId": "3",
+    "uoHash": "0xa7205912f5fa5d4cc9ba10fcf19a5f10f03bbe5bf532c13cbb20d142ba2021cd",
+    "txHash": "0x6b720bfc14f645c46d3b8480f7ace1093feff3a4dfcbaee3d7fd8db670316317",
+    "confirmedAt": "2026-05-06T08:30:40.573Z"
+  },
+  {
+    "action": "subscribe",
+    "mode": "erc20",
+    "startedAt": "2026-05-06T07:56:04.479Z",
+    "result": "success",
+    "wallet": "0xec16e11861eeef3d04edea737e86646ee7f7d695",
+    "token": "0xA555BEf79D024F1776C05A09739943eB6aaA96Af",
+    "subscriptionId": "9",
+    "uoHash": "0x74a32350a452a48c8aee1fd2bae3b4b53fb2dc05c708e4e02e543f4d4da0d1bb",
+    "txHash": "0xacb5fb1b1937af9f9faa421aac0e0d4f27f032d5a7cdaf338e989ebe64c06455",
+    "confirmedAt": "2026-05-06T07:56:04.479Z"
+  },
+  {
+    "action": "subscribe",
+    "mode": "erc20",
+    "startedAt": "2026-05-06T07:55:47.686Z",
+    "result": "success",
+    "wallet": "0xec16e11861eeef3d04edea737e86646ee7f7d695",
+    "token": "0xA555BEf79D024F1776C05A09739943eB6aaA96Af",
+    "subscriptionId": "8",
+    "uoHash": "0x2b79bc02f8b04f43773950f82d2185c0c629b14876500531d0a544eab976b99d",
+    "txHash": "0x81c0e93ab6777098483495b02f6c658f21d21a42e4cb6e2cc96e80191e59bfe7",
+    "confirmedAt": "2026-05-06T07:55:47.686Z"
+  },
+  {
+    "action": "subscribe",
+    "mode": "sponsor",
+    "startedAt": "2026-05-06T07:55:16.584Z",
+    "result": "success",
+    "wallet": "0xec16e11861eeef3d04edea737e86646ee7f7d695",
+    "token": "0xA555BEf79D024F1776C05A09739943eB6aaA96Af",
+    "subscriptionId": "8",
+    "uoHash": "0x92ca8651eb7efba33db1f28c4239983c1806b63e8f4e0eef4d41a39f4d7dd14d",
+    "txHash": "0x0d0d777c68efa8d209f745675cf04d86c5cf9e8f592366b91faca8c90d8aab31",
+    "confirmedAt": "2026-05-06T07:55:16.584Z"
+  },
+  {
     "action": "subscribe",
     "mode": "erc20",
     "startedAt": "2026-05-06T07:46:39.951Z",

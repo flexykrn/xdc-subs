@@ -15,6 +15,7 @@ import { getServiceById, getTierByPlanId } from "@/lib/services";
 import { executeAASubscription } from "@/lib/aa-subscription";
 import { getCounterFactualAddress } from "@/lib/aa-core";
 import { appendTelemetryRow, appendTelemetryRowRemote } from "@/lib/telemetry";
+import { saveSubscriptionEvent } from "@/lib/subscription-events";
 import { connectWeb3Auth, getProviderAccounts, getProviderPrivateKey } from "@/lib/web3auth";
 
 import { useAuth } from "@/components/AuthContext";
@@ -313,6 +314,22 @@ export default function SubscribePage() {
       await appendTelemetryRowRemote(telemetryRow);
 
       setStep(6);
+      
+      // Save to localStorage for instant history display
+      saveSubscriptionEvent({
+        type: "subscribed",
+        txHash: result.txHash,
+        blockNumber: 0, // will be updated on refresh
+        timestamp: Date.now(),
+        subscriptionId: planId,
+        planId: planId,
+        subscriber: saAddress,
+        status: "success",
+        serviceName: selectedService?.name,
+        serviceLogo: selectedService?.logo,
+        tierName: selectedTier?.tier.name,
+      });
+      
       setShowSuccess(true);
     } catch (err) {
       const msg = err instanceof Error ? err.message : "AA transaction failed";

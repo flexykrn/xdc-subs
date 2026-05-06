@@ -8,6 +8,7 @@ import { useAuth } from "@/components/AuthContext";
 import { getTierByPlanId } from "@/lib/services";
 import { getUserSubscriptions, type UserSubscription } from "@/lib/user-subscriptions";
 import { sendSubscriptionAction } from "@/lib/subscription";
+import { saveSubscriptionEvent } from "@/lib/subscription-events";
 import { appendTelemetryRow, appendTelemetryRowRemote } from "@/lib/telemetry";
 import { connectWeb3Auth, getProviderAccounts, getProviderPrivateKey } from "@/lib/web3auth";
 import { getCounterFactualAddress } from "@/lib/aa-core";
@@ -26,7 +27,7 @@ interface SubscriptionCard {
 }
 
 export default function LifecyclePage() {
-  const { isAuthenticated, smartAccountAddress: ctxAddress, setUser } = useAuth();
+  const { isAuthenticated, smartAccountAddress: ctxAddress, setUser, login } = useAuth();
   const [smartAccountAddress, setSmartAccountAddress] = useState("");
   const [subscriptions, setSubscriptions] = useState<UserSubscription[]>([]);
   const [isRefreshing, setIsRefreshing] = useState(false);
@@ -56,6 +57,7 @@ export default function LifecyclePage() {
             smartAccountAddress: data.smartAccountAddress,
             nativeBalance: data.nativeBalance || "0",
           });
+          login(); // FIX: Also set isAuthenticated = true
           loadSubscriptions(data.smartAccountAddress);
           return;
         }
@@ -64,7 +66,7 @@ export default function LifecyclePage() {
       localStorage.removeItem("aa-auth");
     }
     setIsLoading(false);
-  }, [isAuthenticated, smartAccountAddress, setUser]);
+  }, [isAuthenticated, smartAccountAddress, setUser, login]);
 
   const loadSubscriptions = useCallback(async (sa?: string) => {
     const address = sa || smartAccountAddress;
@@ -94,7 +96,8 @@ export default function LifecyclePage() {
           smartAccountAddress: sa,
           nativeBalance: "0",
         });
-        await loadSubscriptions(sa);
+        login(); // FIX: Set isAuthenticated = true
+        loadSubscriptions(sa);
       }
     } catch (err) {
       console.error("[Lifecycle] Connect error:", err);
@@ -144,6 +147,27 @@ export default function LifecyclePage() {
         action: result.action, mode: result.mode, wallet, token: result.token,
         subscriptionId: result.subscriptionId, uoHash: result.uoHash, txHash: result.txHash,
         startedAt: result.startedAt, confirmedAt: result.confirmedAt, result: result.result,
+      });
+
+      // Save event to localStorage for instant history display
+      const eventTypeMap: Record<ActionType, "renewed" | "paused" | "cancelled"> = {
+        renew: "renewed",
+        pause: "paused",
+        cancel: "cancelled",
+      };
+      
+      saveSubscriptionEvent({
+        type: eventTypeMap[action],
+        txHash: result.txHash || "",
+        blockNumber: 0,
+        timestamp: Date.now(),
+        subscriptionId: card.sub.subscriptionId.toString(),
+        planId: card.sub.planId.toString(),
+        subscriber: smartAccountAddress,
+        status: "success",
+        serviceName: card.service?.service.name,
+        serviceLogo: card.service?.service.logo,
+        tierName: card.service?.tier.name,
       });
 
       setActionResult({ type: "success", message: `${action} successful`, txHash: result.txHash || undefined });
