@@ -1,6 +1,18 @@
 [
   {
     "action": "subscribe",
+    "mode": "erc20",
+    "startedAt": "2026-05-06T07:46:39.951Z",
+    "result": "success",
+    "wallet": "0xec16e11861eeef3d04edea737e86646ee7f7d695",
+    "token": "0xA555BEf79D024F1776C05A09739943eB6aaA96Af",
+    "subscriptionId": "3",
+    "uoHash": "0x1efaf4d6f761e2e24bf1dd9002fb41f1288bd1da4d145ffe682fdcd80478e601",
+    "txHash": "0xaaa22f287bdb1669e6956c6c88922dd023026ca20c39198c890f0cf55663fbb7",
+    "confirmedAt": "2026-05-06T07:46:39.951Z"
+  },
+  {
+    "action": "subscribe",
     "mode": "sponsor",
     "startedAt": "2026-05-06T07:45:54.688Z",
     "result": "success",

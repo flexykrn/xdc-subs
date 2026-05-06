@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState, useCallback } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import AuthGuard from "@/components/AuthGuard";
+import { useAuth } from "@/components/AuthContext";
 import { getTierByPlanId } from "@/lib/services";
 import { fetchSubscriptionEventsForUser } from "@/lib/blockchain-events";
 import { connectWeb3Auth, getProviderAccounts } from "@/lib/web3auth";
@@ -24,30 +25,42 @@ interface TxRecord {
 const explorerUrl = process.env.NEXT_PUBLIC_EXPLORER_URL || "https://testnet.xdcscan.com/";
 
 export default function HistoryPage() {
+  const { isAuthenticated, smartAccountAddress: ctxAddress, setUser } = useAuth();
   const [smartAccountAddress, setSmartAccountAddress] = useState("");
   const [records, setRecords] = useState<TxRecord[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [filter, setFilter] = useState<"all" | "subscribed" | "renewed" | "paused" | "cancelled">("all");
   const [statusFilter, setStatusFilter] = useState<"all" | "success" | "failed">("all");
 
-  // Load from localStorage first (no popup)
+  // Sync with AuthContext
   useEffect(() => {
-    async function init() {
-      try {
-        const saved = localStorage.getItem("aa-auth");
-        if (saved) {
-          const data = JSON.parse(saved);
-          if (data.smartAccountAddress) {
-            setSmartAccountAddress(data.smartAccountAddress);
-            return;
-          }
-        }
-      } catch {
-        localStorage.removeItem("aa-auth");
-      }
+    if (ctxAddress) {
+      setSmartAccountAddress(ctxAddress);
     }
-    init();
-  }, []);
+  }, [ctxAddress]);
+
+  // Load from localStorage if AuthContext is empty
+  useEffect(() => {
+    if (isAuthenticated || smartAccountAddress) return;
+    
+    try {
+      const saved = localStorage.getItem("aa-auth");
+      if (saved) {
+        const data = JSON.parse(saved);
+        if (data.smartAccountAddress) {
+          setSmartAccountAddress(data.smartAccountAddress);
+          // Sync back to AuthContext
+          setUser({
+            eoaAddress: data.eoaAddress || "",
+            smartAccountAddress: data.smartAccountAddress,
+            nativeBalance: data.nativeBalance || "0",
+          });
+        }
+      }
+    } catch {
+      localStorage.removeItem("aa-auth");
+    }
+  }, [isAuthenticated, smartAccountAddress, setUser]);
 
   // Load data when address is available
   useEffect(() => {
@@ -90,6 +103,11 @@ export default function HistoryPage() {
       if (wallet) {
         const sa = await getCounterFactualAddress(wallet as `0x${string}`);
         setSmartAccountAddress(sa);
+        setUser({
+          eoaAddress: wallet,
+          smartAccountAddress: sa,
+          nativeBalance: "0",
+        });
       }
     } catch (err) {
       console.error("[History] Connect error:", err);

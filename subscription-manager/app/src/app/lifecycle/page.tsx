@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState, useCallback } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import AuthGuard from "@/components/AuthGuard";
+import { useAuth } from "@/components/AuthContext";
 import { getTierByPlanId } from "@/lib/services";
 import { getUserSubscriptions, type UserSubscription } from "@/lib/user-subscriptions";
 import { sendSubscriptionAction } from "@/lib/subscription";
@@ -25,6 +26,7 @@ interface SubscriptionCard {
 }
 
 export default function LifecyclePage() {
+  const { isAuthenticated, smartAccountAddress: ctxAddress, setUser } = useAuth();
   const [smartAccountAddress, setSmartAccountAddress] = useState("");
   const [subscriptions, setSubscriptions] = useState<UserSubscription[]>([]);
   const [isRefreshing, setIsRefreshing] = useState(false);
@@ -32,27 +34,37 @@ export default function LifecyclePage() {
   const [runningAction, setRunningAction] = useState<{ id: number; action: ActionType } | null>(null);
   const [actionResult, setActionResult] = useState<{ type: "success" | "error"; message: string; txHash?: string } | null>(null);
 
-  // Load from localStorage or connect
+  // Sync with AuthContext
   useEffect(() => {
-    async function init() {
-      try {
-        // Try localStorage first (no popup)
-        const saved = localStorage.getItem("aa-auth");
-        if (saved) {
-          const data = JSON.parse(saved);
-          if (data.smartAccountAddress) {
-            setSmartAccountAddress(data.smartAccountAddress);
-            await loadSubscriptions(data.smartAccountAddress);
-            return;
-          }
-        }
-      } catch {
-        localStorage.removeItem("aa-auth");
-      }
-      setIsLoading(false);
+    if (ctxAddress) {
+      setSmartAccountAddress(ctxAddress);
     }
-    init();
-  }, []);
+  }, [ctxAddress]);
+
+  // Load from localStorage if AuthContext is empty
+  useEffect(() => {
+    if (isAuthenticated || smartAccountAddress) return;
+    
+    try {
+      const saved = localStorage.getItem("aa-auth");
+      if (saved) {
+        const data = JSON.parse(saved);
+        if (data.smartAccountAddress) {
+          setSmartAccountAddress(data.smartAccountAddress);
+          setUser({
+            eoaAddress: data.eoaAddress || "",
+            smartAccountAddress: data.smartAccountAddress,
+            nativeBalance: data.nativeBalance || "0",
+          });
+          loadSubscriptions(data.smartAccountAddress);
+          return;
+        }
+      }
+    } catch {
+      localStorage.removeItem("aa-auth");
+    }
+    setIsLoading(false);
+  }, [isAuthenticated, smartAccountAddress, setUser]);
 
   const loadSubscriptions = useCallback(async (sa?: string) => {
     const address = sa || smartAccountAddress;
@@ -77,6 +89,11 @@ export default function LifecyclePage() {
       if (wallet) {
         const sa = await getCounterFactualAddress(wallet as `0x${string}`);
         setSmartAccountAddress(sa);
+        setUser({
+          eoaAddress: wallet,
+          smartAccountAddress: sa,
+          nativeBalance: "0",
+        });
         await loadSubscriptions(sa);
       }
     } catch (err) {
