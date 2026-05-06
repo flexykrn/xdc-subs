@@ -3,10 +3,11 @@
 import { useEffect, useMemo, useState, useCallback } from "react";
 import Image from "next/image";
 import Link from "next/link";
-import { useAuth } from "@/components/AuthContext";
 import AuthGuard from "@/components/AuthGuard";
 import { getTierByPlanId } from "@/lib/services";
 import { fetchSubscriptionEventsForUser } from "@/lib/blockchain-events";
+import { connectWeb3Auth, getProviderAccounts } from "@/lib/web3auth";
+import { getCounterFactualAddress } from "@/lib/aa-core";
 
 interface TxRecord {
   id: string;
@@ -23,11 +24,29 @@ interface TxRecord {
 const explorerUrl = process.env.NEXT_PUBLIC_EXPLORER_URL || "https://testnet.xdcscan.com/";
 
 export default function HistoryPage() {
-  const { smartAccountAddress } = useAuth();
+  const [smartAccountAddress, setSmartAccountAddress] = useState("");
   const [records, setRecords] = useState<TxRecord[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [filter, setFilter] = useState<"all" | "subscribed" | "renewed" | "paused" | "cancelled">("all");
   const [statusFilter, setStatusFilter] = useState<"all" | "success" | "failed">("all");
+
+  // Connect wallet on mount
+  useEffect(() => {
+    async function init() {
+      try {
+        const provider = await connectWeb3Auth();
+        const accounts = await getProviderAccounts(provider);
+        const wallet = accounts[0] || "";
+        if (wallet) {
+          const sa = await getCounterFactualAddress(wallet as `0x${string}`);
+          setSmartAccountAddress(sa);
+        }
+      } catch (err) {
+        console.error("[History] Init error:", err);
+      }
+    }
+    init();
+  }, []);
 
   const loadData = useCallback(async () => {
     if (!smartAccountAddress) return;

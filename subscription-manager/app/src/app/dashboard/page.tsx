@@ -74,7 +74,7 @@ export default function DashboardPage() {
           symbol: info.symbol || "SUB",
           balance: bal,
           service: "All Services",
-          logo: "/services/sub.png",
+          logo: "/services/xdc.svg",
         });
       }
       setTokenBalances(balances);

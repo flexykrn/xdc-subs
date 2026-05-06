@@ -3,13 +3,13 @@
 import { useEffect, useMemo, useState, useCallback } from "react";
 import Image from "next/image";
 import Link from "next/link";
-import { useAuth } from "@/components/AuthContext";
 import AuthGuard from "@/components/AuthGuard";
 import { getTierByPlanId } from "@/lib/services";
+import { getUserSubscriptions, type UserSubscription } from "@/lib/user-subscriptions";
 import { sendSubscriptionAction } from "@/lib/subscription";
 import { appendTelemetryRow, appendTelemetryRowRemote } from "@/lib/telemetry";
 import { connectWeb3Auth, getProviderAccounts, getProviderPrivateKey } from "@/lib/web3auth";
-import type { OnchainSubscriptionRow } from "@/lib/onchain-subscriptions";
+import { getCounterFactualAddress } from "@/lib/aa-core";
 
 const defaultSubscriptionManagerAddress = process.env.NEXT_PUBLIC_SUBSCRIPTION_MANAGER_ADDRESS || "";
 const explorerUrl = process.env.NEXT_PUBLIC_EXPLORER_URL || "https://testnet.xdcscan.com/";
@@ -17,72 +17,75 @@ const explorerUrl = process.env.NEXT_PUBLIC_EXPLORER_URL || "https://testnet.xdc
 type ActionType = "renew" | "pause" | "cancel";
 
 interface SubscriptionCard {
-  row: OnchainSubscriptionRow;
+  sub: UserSubscription;
   service: ReturnType<typeof getTierByPlanId>;
   nextRenewalDate: Date;
   isOverdue: boolean;
   daysUntilRenewal: number;
 }
 
-let subsCache: { rows: OnchainSubscriptionRow[]; timestamp: number } | null = null;
-const CACHE_TTL_MS = 15000;
-
 export default function LifecyclePage() {
-  const { smartAccountAddress } = useAuth();
-  const [rows, setRows] = useState<OnchainSubscriptionRow[]>([]);
+  const [smartAccountAddress, setSmartAccountAddress] = useState("");
+  const [subscriptions, setSubscriptions] = useState<UserSubscription[]>([]);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [runningAction, setRunningAction] = useState<{ id: number; action: ActionType } | null>(null);
   const [actionResult, setActionResult] = useState<{ type: "success" | "error"; message: string; txHash?: string } | null>(null);
 
-  const refresh = useCallback(async (force = false) => {
-    if (!force && subsCache && Date.now() - subsCache.timestamp < CACHE_TTL_MS) {
-      setRows(subsCache.rows);
-      setIsLoading(false);
-      return;
+  // Connect wallet and load subscriptions
+  useEffect(() => {
+    async function init() {
+      try {
+        const provider = await connectWeb3Auth();
+        const accounts = await getProviderAccounts(provider);
+        const wallet = accounts[0] || "";
+        if (wallet) {
+          const sa = await getCounterFactualAddress(wallet as `0x${string}`);
+          setSmartAccountAddress(sa);
+          await loadSubscriptions(sa);
+        }
+      } catch (err) {
+        console.error("[Lifecycle] Init error:", err);
+        setIsLoading(false);
+      }
     }
+    init();
+  }, []);
+
+  const loadSubscriptions = useCallback(async (sa?: string) => {
+    const address = sa || smartAccountAddress;
+    if (!address) return;
     setIsRefreshing(true);
     try {
-      const res = await fetch("/api/subscriptions/status");
-      if (!res.ok) throw new Error("Failed to load");
-      const json = await res.json();
-      const data = json.rows || [];
-      subsCache = { rows: data, timestamp: Date.now() };
-      setRows(data);
+      const subs = await getUserSubscriptions(address);
+      setSubscriptions(subs);
     } catch (e) {
       setActionResult({ type: "error", message: "Failed to load subscriptions" });
     } finally {
       setIsRefreshing(false);
       setIsLoading(false);
     }
-  }, []);
-
-  useEffect(() => { refresh(); }, [refresh]);
-
-  const userRows = useMemo(() => {
-    if (!smartAccountAddress) return [];
-    return rows.filter(r => r.subscriber.toLowerCase() === smartAccountAddress.toLowerCase());
-  }, [rows, smartAccountAddress]);
+  }, [smartAccountAddress]);
 
   const cards = useMemo<SubscriptionCard[]>(() => {
-    return userRows.map(row => {
-      const service = getTierByPlanId(row.planId);
-      const nextDate = new Date(row.nextRenewalAtIso);
+    return subscriptions.map(sub => {
+      const service = getTierByPlanId(sub.planId);
+      const nextDate = new Date(sub.nextRenewalAt * 1000);
       const now = new Date();
       const diffMs = nextDate.getTime() - now.getTime();
       const days = Math.ceil(diffMs / (1000 * 60 * 60 * 24));
       return {
-        row,
+        sub,
         service,
         nextRenewalDate: nextDate,
         isOverdue: diffMs < 0,
         daysUntilRenewal: days,
       };
     }).sort((a, b) => a.daysUntilRenewal - b.daysUntilRenewal);
-  }, [userRows]);
+  }, [subscriptions]);
 
   async function runAction(card: SubscriptionCard, action: ActionType) {
-    setRunningAction({ id: card.row.subscriptionId, action });
+    setRunningAction({ id: card.sub.subscriptionId, action });
     setActionResult(null);
     try {
       const provider = await connectWeb3Auth();
@@ -95,9 +98,9 @@ export default function LifecyclePage() {
         action,
         mode: "sponsor",
         subscriptionManagerAddress: defaultSubscriptionManagerAddress,
-        subscriptionId: card.row.subscriptionId,
-        tokenAddress: card.row.planTokenAddress,
-        tokenAmount: card.row.planPriceWei,
+        subscriptionId: card.sub.subscriptionId,
+        tokenAddress: card.sub.subscriber, // not used for sponsor mode
+        tokenAmount: "0",
       });
 
       appendTelemetryRow({
@@ -112,8 +115,7 @@ export default function LifecyclePage() {
       });
 
       setActionResult({ type: "success", message: `${action} successful`, txHash: result.txHash || undefined });
-      subsCache = null;
-      await refresh(true);
+      await loadSubscriptions();
     } catch (e) {
       const msg = e instanceof Error ? e.message : "Action failed";
       setActionResult({ type: "error", message: `${action} failed: ${msg}` });
@@ -134,7 +136,7 @@ export default function LifecyclePage() {
                 <p className="text-xs text-slate-500 mt-0.5">Manage your active plans</p>
               </div>
               <button
-                onClick={() => refresh(true)}
+                onClick={() => loadSubscriptions()}
                 disabled={isRefreshing}
                 className="text-xs font-medium text-slate-600 hover:text-slate-900 disabled:opacity-40"
               >
@@ -180,9 +182,9 @@ export default function LifecyclePage() {
             <div className="grid gap-3 md:grid-cols-2">
               {cards.map((card) => (
                 <SubscriptionCardView
-                  key={card.row.subscriptionId}
+                  key={card.sub.subscriptionId}
                   card={card}
-                  isRunning={runningAction?.id === card.row.subscriptionId}
+                  isRunning={runningAction?.id === card.sub.subscriptionId}
                   onAction={(action) => runAction(card, action)}
                 />
               ))}
@@ -222,8 +224,8 @@ function SubscriptionCardView({
   isRunning: boolean;
   onAction: (action: ActionType) => void;
 }) {
-  const { row, service, isOverdue, daysUntilRenewal } = card;
-  const isActive = row.active && !row.paused;
+  const { sub, service, isOverdue, daysUntilRenewal } = card;
+  const isActive = sub.active && !sub.paused;
   const progressPct = Math.max(0, Math.min(100, (30 - daysUntilRenewal) / 30 * 100));
 
   return (
@@ -240,10 +242,10 @@ function SubscriptionCardView({
           </div>
         )}
         <div className="flex-1 min-w-0">
-          <h3 className="text-sm font-bold text-slate-900 truncate">{service ? service.service.name : `Plan ${row.planId}`}</h3>
+          <h3 className="text-sm font-bold text-slate-900 truncate">{service ? service.service.name : `Plan ${sub.planId}`}</h3>
           <p className="text-[11px] text-slate-500">{service?.tier.name || "Unknown"}</p>
         </div>
-        <StateBadge active={isActive} paused={row.paused} />
+        <StateBadge active={isActive} paused={sub.paused} />
       </div>
 
       {/* Progress */}
@@ -251,7 +253,7 @@ function SubscriptionCardView({
         <div className="flex justify-between text-[10px] mb-1">
           <span className="text-slate-500">{isOverdue ? "Overdue" : `${daysUntilRenewal} days left`}</span>
           <span className={isOverdue ? "text-red-600" : daysUntilRenewal <= 3 ? "text-amber-600" : "text-slate-600"}>
-            {service?.tier.priceLabel || `${row.planPriceWei} wei`}
+            {service?.tier.priceLabel || `${sub.priceLabel}`}
           </span>
         </div>
         <div className="h-1.5 w-full rounded-full bg-slate-100">
@@ -262,9 +264,9 @@ function SubscriptionCardView({
 
       {/* Details */}
       <div className="mt-2.5 grid grid-cols-2 gap-x-4 gap-y-1 text-[11px]">
-        <div><span className="text-slate-400">ID:</span> <span className="font-mono text-slate-700">#{row.subscriptionId}</span></div>
+        <div><span className="text-slate-400">ID:</span> <span className="font-mono text-slate-700">#{sub.subscriptionId}</span></div>
         <div><span className="text-slate-400">Renew:</span> <span className="text-slate-700">{card.nextRenewalDate.toLocaleDateString()}</span></div>
-        <div><span className="text-slate-400">Interval:</span> <span className="text-slate-700">{Math.floor(row.planIntervalSeconds/86400)}d</span></div>
+        <div><span className="text-slate-400">Price:</span> <span className="text-slate-700">{sub.priceLabel}</span></div>
         <div>
           <a href={`${explorerUrl}address/${defaultSubscriptionManagerAddress}`} target="_blank" rel="noopener noreferrer"
             className="text-cyan-600 hover:underline inline-flex items-center gap-0.5">
@@ -279,7 +281,7 @@ function SubscriptionCardView({
       {/* Actions */}
       <div className="mt-3 grid grid-cols-3 gap-2">
         <ActionButton label="Renew" icon="↻" color="cyan" disabled={isRunning || !isActive} onClick={() => onAction("renew")} />
-        <ActionButton label={row.paused ? "Resume" : "Pause"} icon={row.paused ? "▶" : "⏸"} color="amber" disabled={isRunning} onClick={() => onAction("pause")} />
+        <ActionButton label={sub.paused ? "Resume" : "Pause"} icon={sub.paused ? "▶" : "⏸"} color="amber" disabled={isRunning} onClick={() => onAction("pause")} />
         <ActionButton label="Cancel" icon="✕" color="red" disabled={isRunning} onClick={() => onAction("cancel")} />
       </div>
     </div>
