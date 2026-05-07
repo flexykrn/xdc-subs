@@ -30,6 +30,9 @@ interface IEntryPoint {
     function depositTo(address account) external payable;
     function getDepositInfo(address account) external view returns (DepositInfo memory);
     function handleOps(PackedUserOperation[] calldata ops, address payable beneficiary) external;
+    function addStake(uint32 unstakeDelaySec) external payable;
+    function unlockStake() external;
+    function withdrawStake(address payable withdrawAddress) external;
 }
 
 enum PostOpMode {
@@ -82,6 +85,28 @@ contract VerifyingSponsorPaymaster is IPaymaster, Ownable {
     function getDeposit() external view returns (uint256) {
         DepositInfo memory info = entryPoint.getDepositInfo(address(this));
         return info.deposit;
+    }
+
+    /// @notice Add stake to EntryPoint (required for paymaster to sponsor UserOps)
+    /// @param unstakeDelaySec Seconds to wait before unstaking (e.g., 86400 for 1 day)
+    function addStake(uint32 unstakeDelaySec) external payable onlyOwner {
+        entryPoint.addStake{value: msg.value}(unstakeDelaySec);
+    }
+
+    /// @notice Check staking status
+    function getStakeInfo() external view returns (uint112 stake, bool staked, uint32 unstakeDelaySec) {
+        DepositInfo memory info = entryPoint.getDepositInfo(address(this));
+        return (info.stake, info.staked, info.unstakeDelaySec);
+    }
+
+    /// @notice Unlock stake (start unstaking countdown)
+    function unlockStake() external onlyOwner {
+        entryPoint.unlockStake();
+    }
+
+    /// @notice Withdraw stake after unstake period
+    function withdrawStake(address payable withdrawAddress) external onlyOwner {
+        entryPoint.withdrawStake(withdrawAddress);
     }
 
     /// @notice Compute the hash that the owner must sign to sponsor a UserOp
