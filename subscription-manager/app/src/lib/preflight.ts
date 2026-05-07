@@ -121,7 +121,7 @@ export function formatPreflightError(check: PreflightCheck, tokenSymbol: string)
   }
 
   if (!check.hasEnough) {
-    return `Insufficient ${tokenSymbol} balance. You have ${bal.toFixed(2)} ${tokenSymbol} but need ${needed.toFixed(2)} ${tokenSymbol} (Subscription: ${sub.toFixed(2)} + Gas: ~${gas.toFixed(4)}). Please get more tokens from the faucet.`;
+    return `Insufficient ${tokenSymbol} balance. You have ${bal.toFixed(2)} ${tokenSymbol} but need ${needed.toFixed(2)} ${tokenSymbol} (Subscription: ${sub.toFixed(2)} + Gas: ~${gas.toFixed(4)}). Please buy more tokens.`;
   }
 
   if (check.tokenAllowance < check.totalRequired) {

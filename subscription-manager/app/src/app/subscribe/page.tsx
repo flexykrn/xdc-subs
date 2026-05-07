@@ -280,7 +280,7 @@ export default function SubscribePage() {
           selectedTier.tier.price,
         );
         if (!check.hasEnough) {
-          throw new Error(formatPreflightError(check, selectedService?.name || "Token"));
+          throw new Error(formatPreflightError(check, "SUB"));
         }
       }
 
