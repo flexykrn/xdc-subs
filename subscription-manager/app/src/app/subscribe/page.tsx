@@ -106,7 +106,7 @@ export default function SubscribePage() {
   const selectedTier = useMemo(() => getTierByPlanId(Number(planId)), [planId]);
   
   // Unified SUB token address for all services
-  const SUB_TOKEN_ADDRESS = process.env.NEXT_PUBLIC_SUB_TOKEN_ADDRESS || "";
+  const SUB_TOKEN_ADDRESS = (process.env.NEXT_PUBLIC_SUB_TOKEN_ADDRESS || "") as `0x${string}`;
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -271,23 +271,10 @@ export default function SubscribePage() {
 
       setStep(2);
       const privateKey = await getProviderPrivateKey(provider);
-      const saAddress = await getCounterFactualAddress(wallet as `0x${string}`);
+      const saAddress = smartAccountAddress || await getCounterFactualAddress(wallet as `0x${string}`);
       setSmartAccount(saAddress);
 
-      if (mode === "erc20") {
-        setStep(3);
-        const { validatePreflight, formatPreflightError } = await import("@/lib/preflight");
-        const check = await validatePreflight(
-          saAddress,
-          selectedTier.service.tokenAddress as `0x${string}`,
-          selectedTier.tier.price,
-        );
-        if (!check.hasEnough) {
-          throw new Error(formatPreflightError(check, "SUB"));
-        }
-      }
-
-      setStep(4);
+      setStep(3);
       const result = await executeAASubscription(
         privateKey,
         SM_ADDRESS,
@@ -295,11 +282,12 @@ export default function SubscribePage() {
         mode,
         SUB_TOKEN_ADDRESS,
         selectedTier.tier.price,
+        saAddress,
       );
 
       setUoHash(result.userOpHash);
       setTxHash(result.txHash);
-      setStep(5);
+      setStep(4);
 
       const telemetryRow = {
         action: "subscribe" as const,
@@ -316,7 +304,7 @@ export default function SubscribePage() {
       appendTelemetryRow(telemetryRow);
       await appendTelemetryRowRemote(telemetryRow);
 
-      setStep(6);
+      setStep(5);
       
       // Save to localStorage for instant history display
       saveSubscriptionEvent({
@@ -348,18 +336,11 @@ export default function SubscribePage() {
     if (!selectedTier) return;
     setError("");
 
-    // 0 tokens → inline Stripe payment first (regardless of gasless or ERC20)
-    const priceInTokens = Number(selectedTier.tier.price) / 1e18;
-    if (balance !== null && Number(balance) < priceInTokens) {
-      await startStripePayment();
-      return;
-    }
-
-    // Otherwise direct AA subscription in selected mode
+    // Always proceed with AA subscription. Contract validates on-chain.
     await runAASubscription();
   };
 
-  const stepLabels = ["", "Connecting wallet...", "Checking balance...", "Estimating gas...", "Submitting UserOp...", "Confirming on-chain...", "Complete!"];
+  const stepLabels = ["", "Connecting wallet...", "Preparing...", "Submitting UserOp...", "Confirming on-chain...", "Complete!"];
 
   return (
     <AuthGuard>
@@ -407,6 +388,16 @@ export default function SubscribePage() {
                 </ul>
               </div>
             </div>
+
+            {/* Smart Account address display */}
+            {smartAccountAddress && (
+              <div className="rounded-lg bg-slate-100 p-2 text-center">
+                <p className="text-[10px] text-slate-500 uppercase tracking-wider">Smart Account</p>
+                <p className="text-xs font-mono text-slate-700 mt-0.5">
+                  {smartAccountAddress.slice(0, 8)}...{smartAccountAddress.slice(-6)}
+                </p>
+              </div>
+            )}
 
             {/* Balance display — no yellow banner, just info */}
             {balance !== null && (

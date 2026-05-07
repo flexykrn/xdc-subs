@@ -241,18 +241,26 @@ export async function submitUserOp({
   mode,
   tokenAddress,
   nonce: providedNonce,
+  sender: providedSender,
 }: {
   privateKey: `0x${string}`;
   callData: `0x${string}`;
   mode: GasMode;
   tokenAddress?: `0x${string}`;
   nonce?: bigint;
+  sender?: `0x${string}`;
 }): Promise<{ txHash: string; userOpHash: string }> {
   const account = privateKeyToAccount(privateKey);
   const owner = account.address;
 
-  // 1. Get smart account address
-  const sender = await getCounterFactualAddress(owner);
+  // Fail early with a clear error if FACTORY is not a deployed contract.
+  const factoryCode = await publicClient.getBytecode({ address: FACTORY });
+  if (!factoryCode || factoryCode === "0x") {
+    throw new Error("Factory address has no deployed code. Redeploy SimpleAccountFactory and update NEXT_PUBLIC_SIMPLE_ACCOUNT_FACTORY_ADDRESS.");
+  }
+
+  // 1. Get smart account address — use provided sender if available
+  const sender = providedSender || await getCounterFactualAddress(owner);
 
   // 2. Get nonce
   const nonce = providedNonce !== undefined ? providedNonce : await getNonce(sender);
@@ -263,11 +271,13 @@ export async function submitUserOp({
 
   // 4. Estimate gas
   const hasInitCode = initCode && initCode.length > 2;
-  const verificationGasLimit = hasInitCode ? 500000n : 150000n;
-  const callGasLimit = 300000n;
+  // First operation from a new wallet includes account deployment (initCode).
+  // Use higher gas limits to avoid AA13 initCode OOG.
+  const verificationGasLimit = hasInitCode ? 1200000n : 250000n;
+  const callGasLimit = hasInitCode ? 650000n : 350000n;
   const maxFeePerGas = 1000000000n;
   const maxPriorityFeePerGas = 1000000000n;
-  const preVerificationGas = hasInitCode ? 100000n : 50000n;
+  const preVerificationGas = hasInitCode ? 180000n : 70000n;
 
   // 5. Build UserOp
   let userOp: PackedUserOp = {

@@ -141,6 +141,7 @@ export default function LifecyclePage() {
         mode: "sponsor",
         subscriptionManagerAddress: defaultSubscriptionManagerAddress,
         subscriptionId: card.sub.subscriptionId,
+        smartAccountAddress,
       });
 
       appendTelemetryRow({
@@ -194,6 +195,11 @@ export default function LifecyclePage() {
               <div>
                 <h1 className="text-xl font-bold text-slate-900">My Subscriptions</h1>
                 <p className="text-xs text-slate-500 mt-0.5">Manage your active plans</p>
+                {smartAccountAddress && (
+                  <p className="text-[10px] font-mono text-slate-400 mt-1">
+                    SA: {smartAccountAddress.slice(0, 8)}...{smartAccountAddress.slice(-6)}
+                  </p>
+                )}
               </div>
               {smartAccountAddress && (
                 <button

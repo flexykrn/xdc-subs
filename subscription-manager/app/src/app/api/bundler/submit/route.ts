@@ -129,7 +129,7 @@ export async function POST(req: NextRequest) {
       functionName: "handleOps",
       args: [[userOp], bundlerAccount.address],
       chain: null,
-      gas: 2000000n,
+      gas: 5000000n,
     });
 
     const userOpHash = getUserOpHash(userOp);

@@ -34,6 +34,7 @@ export function buildEmptyBillingRecord(mode: BillingRecord["mode"]): BillingRec
 
 export interface SendSubscriptionActionParams {
   privateKey?: string;
+  smartAccountAddress?: string;
   action: SubscriptionAction;
   mode: GasMode;
   subscriptionManagerAddress: string;
@@ -62,7 +63,7 @@ export async function sendSubscriptionAction(
   }
 
   const eoa = privateKeyToAccount(privateKey as `0x${string}`);
-  const smartAccountAddress = await getCounterFactualAddress(eoa.address);
+  const smartAccountAddress = params.smartAccountAddress || await getCounterFactualAddress(eoa.address);
   const nativeBalance = await publicClient.getBalance({ address: eoa.address });
 
   console.log("[Subscription] EOA:", eoa.address);
@@ -102,6 +103,7 @@ export async function sendSubscriptionAction(
         params.mode,
         resolvedTokenAddress,
         resolvedTokenAmount,
+        smartAccountAddress,
       );
       break;
     }
@@ -114,6 +116,10 @@ export async function sendSubscriptionAction(
         params.subscriptionManagerAddress,
         params.subscriptionId ?? 0,
         params.action,
+        params.mode,
+        resolvedTokenAddress,
+        resolvedTokenAmount,
+        smartAccountAddress,
       );
       break;
     }

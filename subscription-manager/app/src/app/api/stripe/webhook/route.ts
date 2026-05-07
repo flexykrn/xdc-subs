@@ -3,6 +3,7 @@ import { createWalletClient, http } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
 import Stripe from "stripe";
 import { setPaymentState, updatePaymentState } from "@/lib/payment-state";
+import { getCounterFactualAddress } from "@/lib/aa-core";
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || "");
 const WEBHOOK_SECRET = process.env.STRIPE_WEBHOOK_SECRET || "";
@@ -69,6 +70,15 @@ export async function POST(request: Request) {
         return NextResponse.json({ error: "Missing userAddress" }, { status: 400 });
       }
 
+      // Compute Smart Account address for this EOA so tokens go directly there
+      let smartAccountAddress: `0x${string}` = userAddress as `0x${string}`;
+      try {
+        smartAccountAddress = await getCounterFactualAddress(userAddress as `0x${string}`);
+        console.log(`[Webhook] Computed Smart Account: ${smartAccountAddress} for EOA: ${userAddress}`);
+      } catch (err) {
+        console.warn(`[Webhook] Could not compute Smart Account, falling back to EOA:`, err);
+      }
+
       const tokenAmount = BigInt(Math.floor(paymentIntent.amount / 100)) * 10n ** 18n;
 
       setPaymentState(paymentIntent.id, {
@@ -78,8 +88,8 @@ export async function POST(request: Request) {
         timestamp: Date.now(),
       });
 
-      // Mint in background
-      mintTokensAsync(paymentIntent.id, userAddress as `0x${string}`, paymentIntent.amount).catch((err) => {
+      // Mint in background (to Smart Account, not EOA)
+      mintTokensAsync(paymentIntent.id, smartAccountAddress, paymentIntent.amount, userAddress).catch((err) => {
         console.error(`[Webhook] Mint failed for ${paymentIntent.id}:`, err);
         setPaymentState(paymentIntent.id, {
           status: "failed",
@@ -102,16 +112,26 @@ export async function POST(request: Request) {
         timestamp: Date.now(),
         error: "Payment failed",
       });
+
       return NextResponse.json({ success: true });
     }
 
-    return NextResponse.json({ received: true });
-  } catch {
-    return NextResponse.json({ error: "Webhook processing failed" }, { status: 500 });
+    return NextResponse.json({ success: true });
+  } catch (err) {
+    console.error("[Webhook] Error:", err);
+    return NextResponse.json(
+      { error: err instanceof Error ? err.message : "Internal error" },
+      { status: 500 }
+    );
   }
 }
 
-async function mintTokensAsync(paymentId: string, userAddress: `0x${string}`, amountPaise: number) {
+async function mintTokensAsync(
+  paymentId: string,
+  mintTo: `0x${string}`,
+  amountPaise: number,
+  originalEoa: string = "",
+) {
   let attempts = 0;
   const maxAttempts = 3;
 
@@ -134,10 +154,10 @@ async function mintTokensAsync(paymentId: string, userAddress: `0x${string}`, am
         address: SUB_TOKEN_ADDRESS,
         abi: mintAbi,
         functionName: "mintForPayment",
-        args: [userAddress, tokenAmount, paymentId],
+        args: [mintTo, tokenAmount, paymentId],
       });
 
-      console.log(`[Mint] Success: ${paymentId} → ${txHash}`);
+      console.log(`[Mint] Success: ${paymentId} minted to ${mintTo} (EOA: ${originalEoa}) → ${txHash}`);
 
       updatePaymentState(paymentId, {
         status: "minted",

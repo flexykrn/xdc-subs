@@ -189,6 +189,11 @@ export default function HistoryPage() {
                 <p className="text-xs text-slate-500 mt-0.5">
                   {isScanning ? "Verifying with blockchain..." : "Your on-chain activity"}
                 </p>
+                {smartAccountAddress && (
+                  <p className="text-[10px] font-mono text-slate-400 mt-1">
+                    SA: {smartAccountAddress.slice(0, 8)}...{smartAccountAddress.slice(-6)}
+                  </p>
+                )}
               </div>
               {smartAccountAddress && (
                 <button

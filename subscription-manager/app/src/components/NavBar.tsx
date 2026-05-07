@@ -50,7 +50,7 @@ export default function NavBar() {
 
       const saAddress = await getCounterFactualAddress(eoa as `0x${string}`);
 
-      setUser({ eoaAddress: saAddress, smartAccountAddress: saAddress, nativeBalance: "0" });
+      setUser({ eoaAddress: eoa, smartAccountAddress: saAddress, nativeBalance: "0" });
       login();
     } catch (err) {
       console.error("Connect error:", err);
