@@ -104,6 +104,9 @@ export default function SubscribePage() {
 
   const selectedService = useMemo(() => getServiceById(serviceId), [serviceId]);
   const selectedTier = useMemo(() => getTierByPlanId(Number(planId)), [planId]);
+  
+  // Unified SUB token address for all services
+  const SUB_TOKEN_ADDRESS = process.env.NEXT_PUBLIC_SUB_TOKEN_ADDRESS || "";
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -125,7 +128,7 @@ export default function SubscribePage() {
             jsonrpc: "2.0",
             id: 1,
             method: "eth_call",
-            params: [{ to: selectedTier.service.tokenAddress, data: `0x70a08231000000000000000000000000${smartAccountAddress.slice(2)}` }, "latest"]
+            params: [{ to: SUB_TOKEN_ADDRESS, data: `0x70a08231000000000000000000000000${smartAccountAddress.slice(2)}` }, "latest"]
           })
         });
         const data = await response.json();
@@ -290,7 +293,7 @@ export default function SubscribePage() {
         SM_ADDRESS,
         Number(planId),
         mode,
-        selectedTier.service.tokenAddress,
+        SUB_TOKEN_ADDRESS,
         selectedTier.tier.price,
       );
 
@@ -302,7 +305,7 @@ export default function SubscribePage() {
         action: "subscribe" as const,
         mode,
         wallet,
-        token: selectedTier.service.tokenAddress,
+        token: SUB_TOKEN_ADDRESS,
         subscriptionId: planId,
         uoHash: result.userOpHash,
         txHash: result.txHash,
